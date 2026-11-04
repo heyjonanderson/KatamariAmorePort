@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Katamari Amore web port</title>
+<link rel="stylesheet" href="ui.css?v=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { pointer-events: none; }
+  #bDash { position: fixed; right: 18px; bottom: 26px; width: 84px; height: 84px; border-radius: 50%; border: 3px solid #fff8; background: #ff7a2a99; color: #fff; font: bold 15px system-ui; display: none; touch-action: none; }
+  @media (pointer: coarse) { #bDash { display: block; } #help { display: none; } }
+  #msg { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: #0007; font-size: 28px; }
+  #msg button, #top button { background: #ffd24a; color: #222; border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-size: 16px; }
+  #top { position: fixed; left: 50%; transform: translateX(-50%); top: 10px; display: flex; gap: 6px; }
+  #top button { background: #0006; color: #fff; padding: 6px 10px; font-size: 13px; }
+  #help { position: fixed; left: 12px; bottom: 10px; font-size: 12px; opacity: .75; text-shadow: 0 1px 3px #000; pointer-events: none; }
+  #stick { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border: 2px solid #fff6; border-radius: 50%; display: none; pointer-events: none; }
+  #stick i { position: absolute; left: 35px; top: 35px; width: 40px; height: 40px; border-radius: 50%; background: #fff6; }
+  #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #101418; font-size: 18px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="hud"></canvas>
+<div id="top"><select id="stage" style="display:none"></select><button id="bRestart">Restart</button><button id="bSnd">Sound on</button><a href="menu.html"><button>Menu</button></a><a href="viewer.html"><button>Viewer</button></a></div>
+<div id="help">WASD / arrows: roll and steer &nbsp; Shift or Space: dash &nbsp; R: restart &nbsp; touch: drag on the left and right halves (two sticks)</div>
+<button id="bDash">DASH</button>
+<div id="res" style="position:fixed;inset:0;display:none;background:#000a"><div class="kbox" id="rbox" style="background:none"><div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/KING/KinSKING.png)"></div><div class="dlg" id="rDlg"><div class="t"></div><div class="n">&#9660;</div></div><div class="small" id="rRetry" style="left:12px;top:10px;display:none">Retry</div><div class="small" id="rMenu" style="right:12px;top:10px;display:none">Stage select</div></div></div>
+<div id="msg"><div id="msgt"></div><button id="bAgain">Play again</button></div>
+<div id="load">loading...</div>
+<script src="audio.js?v=1"></script>
+<script src="text.js?v=1"></script>
+<script src="sim.js?v=1"></script>
+<script src="game.js?v=1"></script>
+</body>
+</html>

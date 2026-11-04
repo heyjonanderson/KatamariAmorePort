@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Katamari Amore web port</title>
+<link rel="stylesheet" href="ui.css?v=1">
+</head>
+<body>
+<div class="kbox" id="box">
+  <!-- logo -->
+  <div class="scr" id="sLogo" style="background:#fff">
+    <div class="img" style="left:112px;top:32px;width:256px;height:256px;background-image:url(ui/TITLE/TITLE000.png)"></div>
+  </div>
+  <!-- title -->
+  <div class="scr" id="sTitle">
+    <div class="img" style="left:0;top:0;width:480px;height:320px;background-image:url(ui/TITLE/TITLE001.png);background-position:-1px 0"></div>
+    <div class="img" style="left:-8px;top:2px;width:512px;height:100px;background-image:url(ui/LOGOE/TITLE_L.png)"></div>
+    <div class="small" id="tStart" style="left:50%;bottom:34px;transform:translateX(-50%);font-size:16px;padding:5px 18px;animation:bl 1.1s infinite">Touch to start</div>
+  </div>
+  <!-- mode select -->
+  <div class="scr" id="sMode">
+    <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/MODE/ModMBG.png)"></div>
+    <div class="img" style="left:0;top:214px;width:480px;height:106px;background-image:url(ui/MODE/ModK&R.png);background-position:0 -176px"></div>
+    <div class="img" style="left:-14px;top:206px;width:230px;height:113px;background-image:url(ui/MODE/ModK&R.png);background-size:256px 256px;background-position:-1px -142px;transform-origin:0 0;"></div>
+    <div class="hdr" id="mHdr"></div>
+    <div id="mBtns"></div>
+    <div class="info" id="mInfo" style="top:236px;left:200px;right:10px;text-align:left"></div>
+  </div>
+  <!-- stage select -->
+  <div class="scr" id="sStage">
+    <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/MODE/ModMBG.png)"></div>
+    <div class="hdr" id="stHdr"></div>
+    <div id="stTiles"></div>
+    <div class="small" id="stBack" style="left:12px;bottom:10px">Back</div>
+    <div class="info" id="stInfo" style="bottom:12px;left:80px;right:80px"></div>
+  </div>
+  <!-- mission card: the King, then his briefing -->
+  <div class="scr" id="sKing">
+    <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/KING/KinSKING.png)"></div>
+    <div class="dlg" id="kDlg"><div class="t"></div><div class="n">&#9660;</div></div>
+    <div class="small" id="kSkip" style="right:12px;top:10px">Skip</div>
+  </div>
+</div>
+<script src="audio.js?v=1"></script>
+<script src="text.js?v=1"></script>
+<script src="menu.js?v=1"></script>
+</body>
+</html>
