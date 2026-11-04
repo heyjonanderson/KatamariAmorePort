@@ -68,8 +68,8 @@ function makeTex(img) {
 }
 async function loadGroup(stage, tag) {
   const base = `data/${stage}/`;
-  const man = await (await fetch(`${base}${tag}.json?v=1`)).json();
-  const blob = await (await fetch(`${base}${tag}.bin?v=1`)).arrayBuffer();
+  const man = await (await fetch(`${base}${tag}.json?v=3`)).json();
+  const blob = await (await fetch(`${base}${tag}.bin?v=3`)).arrayBuffer();
   const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const texs = {};
@@ -106,13 +106,15 @@ const UI = {};                                // HUD images
 
 
 // CATCH_SE = [2, 0, n, 0, every]: n picks one of three sounds, every = repeat interval in frames. The file for each n is a guess from clip lengths (A53)
+const EXACT_CM = { S001: 90, S002: 60, S003: 120, S004: 350, S005: 400, S006: 9000 };   // same table as menu.js (A57)
 const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 function restart() {
   S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
-  { const tl = play.mis.time_limit || []; S.timeLimit = MODE === 'eternal' ? Infinity : (tl[MODE === 'timeattack' ? 1 : 0] || 360); }   // TIME_LIMIT entries: 0 story, 1 time attack (guess, A42)
+  { const tl = play.mis.time_limit || []; S.timeLimit = (MODE === 'eternal' || MODE === 'exact') ? Infinity : (tl[MODE === 'timeattack' ? 1 : 0] || 360); }   // TIME_LIMIT entries: 0 story, 1 time attack (guess, A42)
+  if (MODE === 'exact') S.goal = EXACT_CM[STAGE] || S.goal;   // exact size: the target is just a number to hit, nothing ends the stage until the player stops (A57)
   $('msg').style.display = 'none'; acc = 0;
 }
 
@@ -188,7 +190,7 @@ function draw(alpha) {
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
   bindGroup(og);
-  for (const o of S.objs) { if (o.state !== 'map') continue; const m = og.mods[o.model]; if (!m) continue;
+  for (const o of S.objs) { if (o.state !== 'map') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((S.frame + alpha) * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
   // attached objects: world = T(ball) * R * [lrot | lpos]
@@ -245,7 +247,7 @@ function drawHud() {
   // size number
   const nh = gs * 0.26; hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiam(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore();
   // goal marker text
-  hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
+  hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : MODE === 'exact' ? 'make it ' + fmtDiam(S.goal) : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
   // timer: pie of remaining time, number inside
   const inf = !isFinite(S.timeLimit), left = inf ? S.frame / KSim.FPS : Math.max(0, S.timeLimit - S.frame / KSim.FPS), ts = Math.max(64, Math.min(96, Math.min(W, H) * 0.16)), tx = W - ts - 12, ty = 12;
   if (UI.TIMER) hx.drawImage(UI.TIMER, tx, ty, ts, ts);
@@ -270,6 +272,7 @@ function showResult() {
   if (MODE === 'story') {
     if (S.won) { const f = left / S.timeLimit, k = f >= 0.5 ? 'STORY_RES03' : f >= 0.2 ? 'STORY_RES01' : 'STORY_RES02'; names = [k]; }
     else names = ['STORY_FAIL'];
+  } else if (MODE === 'exact') { const e = exactErr(); names = ['SIZE_END', e <= 2 ? 'SIZE_RES03' : e <= 25 ? 'SIZE_RES01' : 'SIZE_RES02']; v.size = e <= 2 ? fmtDiam(S.diam) : fmtDiam(S.goal);
   } else { const f = S.diam / Math.max(S.goal, 1); names = [f >= 1 ? 'TIME_RES03' : f >= 0.5 ? 'TIME_RES01' : 'TIME_RES02']; }
   const pages = KT.pages(names, v); if (names[0] === 'STORY_RES01') pages.push(v.time);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
@@ -305,6 +308,7 @@ function frame(now) {
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); }
     }
     if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
+    if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (S.events.some(e => e.type === 'area')) toast = { t: 4 * KSim.FPS, text: 'New area unlocked' };   // PLACEHOLDER (P21): the original's cue is unknown
     if (!over && S.frame / KSim.FPS >= S.timeLimit) { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); }
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
@@ -318,7 +322,7 @@ function frame(now) {
 
 (async function init() {
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=1`)).json(); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } }
+    play = await (await fetch(`data/${STAGE}/play.json?v=3`)).json(); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } }
     mg = await loadGroup(STAGE, 'map'); og = await loadGroup(STAGE, 'obj'); ball = makeBall();
     try { ou = await loadGroup('common', 'ouji'); } catch (e) { G.err.push('ouji ' + e); }
     await loadUI();
@@ -331,7 +335,7 @@ function frame(now) {
 // The catch rule is the one open question that changes the stage 1 feel (A48), so testers can flip it here. It reloads the page with ?catch=goal or without it.
 function setPause(on) {
   if (S && (S.won || lost)) on = false;
-  paused = on; $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
+  paused = on; $('pStop').style.display = MODE === 'exact' ? 'block' : 'none'; $('pStop').textContent = 'Stop with this size'; stopArmed = false; $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
   if (on) { const cm = qs.get('catch') === 'goal'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'fitted to the goal' : 'from the data (default)') + ' (tap to switch)'; }
 }
 function reportText() {
@@ -352,7 +356,17 @@ function saveRecord() {
   try {
     const rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'), r = rec[STAGE] = rec[STAGE] || {}, el = S.frame / KSim.FPS;
     if (MODE === 'story') { if (S.won && (!r.story || el < r.story)) { r.story = +el.toFixed(1); r.newBest = true; } r.cleared = r.cleared || !!S.won; }
+    else if (MODE === 'exact') { const e = exactErr(); if (r.exact === undefined || e < r.exact) { r.exact = e; r.newBest = true; } }
     else { const k = MODE; if (!r[k] || S.diam > r[k]) { r[k] = +S.diam.toFixed(1); r.newBest = true; } }
     localStorage.setItem('kam_rec', JSON.stringify(rec)); return r.newBest;
   } catch (e) { return false; }
 }
+
+// ---- exact size mode ----
+// Roll to the target size, then "Stop with this size" in the pause menu (the King's own line asks for it). Percent error decides the King's verdict. Thresholds are mine (A57).
+let stopArmed = false;
+function exactErr() { return +(Math.abs(S.diam - S.goal) / S.goal * 100).toFixed(1); }
+$('pStop').onclick = () => {
+  if (!stopArmed) { stopArmed = true; $('pStop').textContent = (window.KText ? KText.group('PAUSE_MENU')[1] : 'Are you okay with this size?') + ' Tap again for yes'; return; }
+  paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_res_00');
+};

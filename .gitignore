@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 previews/
 .DS_Store
+_cs/

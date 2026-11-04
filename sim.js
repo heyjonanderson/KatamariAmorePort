@@ -148,7 +148,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     for (const o of play.objs) {
@@ -319,6 +319,10 @@
     if (moved > 1e-6) {
       const axis = norm([mz, 0, -mx]);
       S.R = mmul(axisAngle(axis, -moved / R), S.R);
+    }
+    // fell through the map (KatamariRecover.cppi): when the ball is 'bottom' cm below the floor line it goes back to the recover point (the start), keeping what it has picked up (A56)
+    const rc = S.recover; if (rc && S.pos[1] < -rc[0]) {
+      S.pos = [rc[1], Math.max(-rc[2], 5) + S.diam, rc[3]]; S.vy = 0; S.v = [0, 0]; S.speed = 0; S.yaw = rc[4]; S.dash = false; S.dashT = 0; S.events.push({ type: 'recover' });
     }
     // pickup
     const cdm = S.diam * 10;

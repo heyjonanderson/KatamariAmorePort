@@ -9,10 +9,10 @@
   function fill(s, v) { v = v || {}; return s.replace(/\[GOAL\]/g, v.goal || '').replace(/\[TIME\]/g, v.time || '').replace(/\[SIZE\]/g, v.size || '').replace(/\[SCORE\]/g, v.score || ''); }
   const pages = (names, v) => [].concat(...names.map(n => Array.isArray(n) ? n : group(n))).map(s => fill(clean(s), v));
   // Dialog: types text out, tap / Enter / Space finishes the page, then advances. el = the box element, with .t (text) and .n (arrow)
-  function dialog(el, list, done) {
+  function dialog(el, list, done, onPage) {
     const t = el.querySelector('.t'), n = el.querySelector('.n'); let i = 0, c = 0, timer = null, fin = false;
     const SPEED = 38;
-    function show() { c = 0; fin = false; n.style.visibility = 'hidden'; t.textContent = ''; clearInterval(timer); timer = setInterval(() => { c += SPEED / 60; const k = Math.floor(c); t.textContent = list[i].slice(0, k); if (k >= list[i].length) { clearInterval(timer); fin = true; n.style.visibility = 'visible'; } }, 1000 / 60); }
+    function show() { onPage && onPage(i); c = 0; fin = false; n.style.visibility = 'hidden'; t.textContent = ''; clearInterval(timer); timer = setInterval(() => { c += SPEED / 60; const k = Math.floor(c); t.textContent = list[i].slice(0, k); if (k >= list[i].length) { clearInterval(timer); fin = true; n.style.visibility = 'visible'; } }, 1000 / 60); }
     function next() { if (!fin) { clearInterval(timer); t.textContent = list[i]; fin = true; n.style.visibility = 'visible'; return; } i++; if (i >= list.length) { clearInterval(timer); done && done(); return; } show(); }
     const key = e => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); next(); } };
     el.onclick = next; document.addEventListener('keydown', key);
@@ -21,6 +21,7 @@
   }
   // fit a 480x320 box (the art's native size) into the window
   function fit(box) { const f = () => { const s = Math.min(innerWidth / 480, innerHeight / 320); box.style.transform = `translate(${(innerWidth - 480 * s) / 2}px,${(innerHeight - 320 * s) / 2}px) scale(${s})`; }; addEventListener('resize', f); setInterval(f, 400); f(); }   // the interval covers panes that resize without telling the page
-  async function load() { T = await (await fetch('data/strings_en.json?v=1')).json(); return root.KText; }
-  root.KText = { load, group, clean, fill, pages, fmtTime, dialog, fit };
+  async function load() { T = await (await fetch('data/strings_en.json?v=3')).json(); return root.KText; }
+  const fmtSize = cm => cm < 100 ? Math.floor(cm) + 'cm' : (cm / 100).toFixed(1).replace(/\.0$/, '') + 'm';
+  root.KText = { load, group, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
 })(window);

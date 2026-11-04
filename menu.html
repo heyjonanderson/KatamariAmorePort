@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=1">
+<link rel="stylesheet" href="ui.css?v=3">
 </head>
 <body>
 <div class="kbox" id="box">
@@ -32,7 +32,7 @@
     <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/MODE/ModMBG.png)"></div>
     <div class="hdr" id="stHdr"></div>
     <div id="stTiles"></div>
-    <div class="small" id="stBack" style="left:12px;bottom:10px">Back</div>
+    <div class="small" id="stBack" style="left:12px;bottom:10px">Back</div><div class="small" id="stDemo" style="right:12px;bottom:10px">Replay intro</div>
     <div class="info" id="stInfo" style="bottom:12px;left:80px;right:80px"></div>
   </div>
   <!-- mission card: the King, then his briefing -->
@@ -41,9 +41,15 @@
     <div class="dlg" id="kDlg"><div class="t"></div><div class="n">&#9660;</div></div>
     <div class="small" id="kSkip" style="right:12px;top:10px">Skip</div>
   </div>
+  <!-- opening story: art from OP1 (the original's intro sprites), my own staging -->
+  <div class="scr" id="sDemo" style="background:#000">
+    <div id="dScene"></div>
+    <div class="dlg" id="dDlg"><div class="t"></div><div class="n">&#9660;</div></div>
+    <div class="small" id="dSkip" style="right:12px;top:10px">Skip</div>
+  </div>
 </div>
-<script src="audio.js?v=1"></script>
-<script src="text.js?v=1"></script>
-<script src="menu.js?v=1"></script>
+<script src="audio.js?v=3"></script>
+<script src="text.js?v=3"></script>
+<script src="menu.js?v=3"></script>
 </body>
 </html>

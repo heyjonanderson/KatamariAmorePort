@@ -24,9 +24,10 @@ for st in STAGES:
     for k in range(0, len(ev) - 1, 2):
         if ev[k] < 0: break
         stoppers.append([ev[k], ev[k+1]])
+    rp = floats(sec['RECOVERY_POINT'][1]) if False else list(struct.unpack('>5f', sec['RECOVERY_POINT'][1][2:22]))   # [bottom, x, y, z, angle]; KatamariRecover.cppi: fell when y >= bottom (y down), respawn at the nearest point
     ex = sec['MISSION_DATA_EXT'][1]; target = ex[10:26].decode('latin1').strip()
     mis = dict(target=target, target_raw=target, stoppers=stoppers, addvol=floats(sec['VOLUME_RATIO'][1]), gravity=floats(sec['GRAVITY'][1]), speed=[list(r) for r in recs if len(r) == 21 and r[0] >= 0],
-               mission_floats=mf, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0])
+               mission_floats=mf, recover=rp, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0])
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLST.dat'); mst = (d, b, e); mons, _ = T.parse_monolist(chunk(d, b, e, 'MONOLIST'))
     d, b, e, _ = dat.parse(f'{SRC}/{st}OBJM.dat'); have = {x[1]: mdl.parse(d[b+x[2]+4: b+x[2]+x[3]]) for x in e if x[0] == 2}
     nd, nb, ne, _ = dat.parse(f'{SRC}/English.lproj/MONONAME.dat'); nch = chunk(nd, nb, ne, 'MONONA%02d' % (int(st[1:]) - 1)); names_en = []
@@ -36,19 +37,23 @@ for st in STAGES:
             off_, ln_ = struct.unpack('>2I', nch[8+8*k: 16+8*k]); names_en.append(nch[pool+off_: pool+off_+ln_].decode('utf-8', 'replace').replace('\x00', '').strip())
     info = {}
     for mi, m in enumerate(mons):
-        real = m['model']; path_info = None; cse = None
+        real = m['model']; path_info = None; cse = None; anim = None
         if re.match(r'MI[a-z]', real):                       # mission item wrapper chunk (ANIME / PATH / CATCH_SE) that names the real model, e.g. MIaWDECK -> Msa0000
             mc = chunk(*mst, real); mm = re.search(rb'M[a-z]{2}\d{4}', mc) if mc else None
             if mm: real = mm.group(0).decode()
             if mc:
                 ms = mis_sections(mc)
                 if 'PATH' in ms and len(ms['PATH'][1]) >= 12: pbody = ms['PATH'][1]; path_info = dict(no=struct.unpack('>H', pbody[2:4])[0], speed=struct.unpack('>f', pbody[-4:])[0])
+                if 'ANIME' in ms:                                  # [u16 version, u16 n, n x 16-byte model names, f32 speed]: a flip-book. Frames are shown in order, advancing `speed` frames per tick (A59)
+                    ab = ms['ANIME'][1]; an = struct.unpack('>H', ab[2:4])[0]
+                    if an > 1 and len(ab) >= 4 + 16 * an + 4:
+                        fr = [ab[4+16*q: 20+16*q].decode('latin1').strip() for q in range(an)]; anim = dict(frames=fr, speed=round(struct.unpack('>f', ab[4+16*an: 8+16*an])[0], 5))
                 if 'CATCH_SE' in ms: cse = struct.unpack('>%dH' % (len(ms['CATCH_SE'][1]) // 2), ms['CATCH_SE'][1])
         if real not in have: continue
         m = dict(m, model_real=real, special=bool(re.match(r'MI[a-z]', m['model'])))
         P = have[real]['pos']; lo = [min(p[k] for p in P) for k in range(3)]; hi = [max(p[k] for p in P) for k in range(3)]
         w, h, dd = [max(hi[k]-lo[k], 0.1) * 0.01 for k in range(3)]
-        info[m['name']] = dict(path=path_info, catch_se=cse, cat=m['cat'], label=names_en[mi] if mi < len(names_en) else m['name'], model=real, special=m['special'], lo=lo, hi=hi, boxvol=w*h*dd, catch_mm=m['f'][0], vol_ratio=m['f'][1], add_ratio=m['f'][2])
+        info[m['name']] = dict(path=path_info, catch_se=cse, anim=anim, cat=m['cat'], label=names_en[mi] if mi < len(names_en) else m['name'], model=real, special=m['special'], lo=lo, hi=hi, boxvol=w*h*dd, catch_mm=m['f'][0], vol_ratio=m['f'][1], add_ratio=m['f'][2])
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLOC.dat'); objs = []
     inf = [x for x in e if x[1] == 'MP_INF'][0]; ib = d[b+inf[2]+4: b+inf[2]+inf[3]]; layers = []
     k = ib.find(b'MP_S00')
