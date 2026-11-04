@@ -40,30 +40,40 @@ const P = prog(`
   uniform mat4 uVP; uniform mat4 uModel; varying vec3 vN; varying vec2 vUv;
   void main() { gl_Position = uVP * (uModel * vec4(aPos, 1.0)); vN = mat3(uModel) * aNrm; vUv = aUv; }`,
 `
-  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint;
+  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec2 uLight;
   void main() {
     vec4 c = uUseTex > 0.5 ? texture2D(uTex, vUv) : vec4(uTint, 1.0);
     if (c.a < 0.4) discard;
-    vec3 n = normalize(vN); float l = 0.55 + 0.45 * abs(dot(n, normalize(vec3(0.4, 0.8, 0.5))));
+    vec3 n = normalize(vN); float l = uLight.x + uLight.y * abs(dot(n, normalize(vec3(0.4, 0.8, 0.5))));
     gl_FragColor = vec4(c.rgb * l, 1.0);
   }`);
 const L = { pos: gl.getAttribLocation(P, 'aPos'), nrm: gl.getAttribLocation(P, 'aNrm'), uv: gl.getAttribLocation(P, 'aUv'),
   vp: gl.getUniformLocation(P, 'uVP'), model: gl.getUniformLocation(P, 'uModel'),
-  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint') };
+  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint'), light: gl.getUniformLocation(P, 'uLight') };
 
 // ---- loading (same data layout as the viewer) ----
 const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
+// ---- settings (A67): lighting and texture filtering, kept in localStorage. The original's own values are not in the data, so these are choices, not a copy ----
+const LIGHTS = [['Soft', 0.55, 0.45], ['Flat', 1, 0], ['Strong', 0.3, 0.7]], FILTERS = ['Smooth', 'Sharp', 'Pixel'], SET = { light: 0, filter: 0 }, ALLTEX = [];
+try { const s = JSON.parse(localStorage.getItem('kam_set') || '{}'); SET.light = s.light | 0; SET.filter = s.filter | 0; } catch (e) {}
+if (!LIGHTS[SET.light]) SET.light = 0; if (!FILTERS[SET.filter]) SET.filter = 0;
+function saveSet() { try { localStorage.setItem('kam_set', JSON.stringify(SET)); } catch (e) {} }
+function texFilter(t, mip) {
+  gl.bindTexture(gl.TEXTURE_2D, t); const f = SET.filter;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f === 2 ? (mip ? gl.NEAREST_MIPMAP_NEAREST : gl.NEAREST) : mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f === 0 ? gl.LINEAR : gl.NEAREST);
+}
+function applyFilter() { for (const q of ALLTEX) texFilter(q.t, q.mip); }
 function makeTex(img) {
   const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
   const ok = pow2(img.width) && pow2(img.height);
   if (ok) gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, ok ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   const wrap = ok ? gl.REPEAT : gl.CLAMP_TO_EDGE;
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  ALLTEX.push({ t, mip: ok }); texFilter(t, ok);
   return t;
 }
 const NOLOAD = { step() {}, set() {}, grow() {}, expect() {}, label() {}, end() {} };   // used when load.js is absent (tests)
@@ -73,8 +83,8 @@ async function getBuf(url, task, units) {   // units = how much of the progress 
 }
 async function loadGroup(stage, tag, task) {
   task = task || NOLOAD; const base = `data/${stage}/`;
-  task.grow(5); const man = await (await fetch(`${base}${tag}.json?v=4`)).json(); task.step(1);
-  const blob = await getBuf(`${base}${tag}.bin?v=4`, task, 4);
+  task.grow(5); const man = await (await fetch(`${base}${tag}.json?v=9`)).json(); task.step(1);
+  const blob = await getBuf(`${base}${tag}.bin?v=9`, task, 4);
   const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const texs = {};
@@ -116,7 +126,7 @@ const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; lumps = []; lift = 0; pulse = 0; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
@@ -162,33 +172,16 @@ function drawModel(g, m, mat) {
   }
 }
 function objMat(R3, t) { return M.fromR3(R3, t, 1); }
-// ---- lumps (A60): objects with IBITSU shape points stretch the ball toward their far tip, like the engine's "fluid" distort points ----
-// The original keeps up to 6 of these from the last N objects that stuck on. N (KPARAM IbitsuCheckDepth) and how far the surface follows the tip are guesses.
-const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_FOLLOW = 0.45, LUMP_SHARP = 6;
-let lumps = [], lift = 0, pulse = 0;
-function updateLumps(R) {
-  lumps = []; let seen = 0;
-  for (let i = S.attached.length - 1; i >= 0 && seen < LUMP_DEPTH; i--) {
-    const o = S.attached[i], inf = S.info[o.n], ib = inf && inf.ibi; if (!ib) continue; seen++;
-    let fl = 0, fq = null;
-    for (const p of ib) { const q = KSim.mvec(o.lrot, p); q[0] += o.lpos[0]; q[1] += o.lpos[1]; q[2] += o.lpos[2]; const l = Math.hypot(q[0], q[1], q[2]); if (l > fl) { fl = l; fq = q; } }
-    if (fq && fl > R * 1.02) lumps.push({ n: [fq[0] / fl, fq[1] / fl, fq[2] / fl], k: fl / R - 1 });
-  }
-  lumps.sort((a, b) => b.k - a.k); lumps.length = Math.min(lumps.length, LUMP_MAX);
-}
-function lumpMult(d) { let m = 0; for (const L of lumps) { const c = L.n[0] * d[0] + L.n[1] * d[1] + L.n[2] * d[2]; if (c > 0) m = Math.max(m, LUMP_FOLLOW * L.k * Math.pow(c, LUMP_SHARP)); } return 1 + Math.min(m, 0.45); }
+// ---- lumps (A60, A64): the shape comes from the sim (S.lumps); here the mesh follows it ----
+let pulse = 0;
 function shapeBall(R) {
-  updateLumps(R);
-  const D = ball.data, M_ = ball.mult; let changed = false;
+  const D = ball.data, M_ = ball.mult, lm = S.lumps; let changed = false;
   for (let i = 0, n = M_.length; i < n; i++) {
-    const o = i * 8, t = lumps.length ? lumpMult([D[o + 3], D[o + 4], D[o + 5]]) : 1;   // normal slots still hold the unit direction
-    const c = M_[i] + (t - M_[i]) * 0.2; if (Math.abs(c - M_[i]) > 1e-4) { M_[i] = c; changed = true; } else M_[i] = t;
+    const o = i * 8, t = lm.length ? KSim.lumpMult(lm, [D[o + 3], D[o + 4], D[o + 5]]) : 1;   // normal slots still hold the unit direction
+    const c = M_[i] + (t - M_[i]) * 0.25; if (Math.abs(c - M_[i]) > 1e-4) { M_[i] = c; changed = true; } else M_[i] = t;
     D[o] = D[o + 3] * M_[i]; D[o + 1] = D[o + 4] * M_[i]; D[o + 2] = D[o + 5] * M_[i];
   }
   if (changed || ball.dirty) { gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bufferSubData(gl.ARRAY_BUFFER, 0, D); ball.dirty = changed; }
-  // rolling on a lump lifts the ball: the surface point that faces down decides how high the centre sits (visual only, the physics ball stays round)
-  const dn = KSim.mvec(KSim.mtr(S.R), [0, -1, 0]), want = lumps.length ? (lumpMult(dn) - 1) * R : 0;
-  lift += (want - lift) * 0.25;
 }
 function draw(alpha) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -219,16 +212,17 @@ function draw(alpha) {
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
   const far = Math.max(cp.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
   const vp = M.mul(M.persp(0.9, w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
-  gl.useProgram(P); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // map
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
   bindGroup(og);
-  for (const o of S.objs) { if (o.state !== 'map') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((S.frame + alpha) * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
+  for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((S.frame + alpha) * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
-  shapeBall(R); const bpos = [pos[0], pos[1] + lift, pos[2]]; pulse *= 0.86;
+  shapeBall(R); const bpos = pos; pulse *= 0.86;
+  G.vp = vp.slice ? vp.slice() : vp;
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
   // attached objects: world = T(ball) * R * [lrot | lpos]
   for (const o of S.attached) {
@@ -238,10 +232,11 @@ function draw(alpha) {
   }
   // prince, behind the ball (PLACEHOLDER P15: placement, scale, walk cycle order and which way the model faces are guesses)
   if (ou && S.diam < 100 && (cam.L === undefined || cam.L > R * 3.5)) {   // hidden if the clipped camera is right on top of it
-    const m = ou.mods['GiOujiM' + [0, 1, 0, 2][ouji.pat % 4]], fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
+    const yawI = prevYaw + (S.yaw - prevYaw) * alpha, m = ou.mods['GiOujiM' + (S.flipT > 0 ? 0 : [0, 1, 0, 2][ouji.pat % 4])], fx = Math.sin(yawI), fz = Math.cos(yawI);
     let off = R + 1.6; { const t = KSim.rayHit(S, pos[0], pos[1] - R * 0.5, pos[2], -fx, 0, -fz, off + 1.5); if (t !== null) off = Math.max(R * 0.6, t - 1.5); }   // do not stand inside a wall behind the ball
-    const c = Math.cos(S.yaw), sn = Math.sin(S.yaw), Ry = [-c,0,sn, 0,1,0, -sn,0,-c];     // local -z -> forward (the model faces -z)
+    const c = Math.cos(yawI), sn = Math.sin(yawI), Ry = [-c,0,sn, 0,1,0, -sn,0,-c];     // local -z -> forward (the model faces -z)
     const ppos = [pos[0] - fx * off, pos[1] - R, pos[2] - fz * off];
+    if (S.flipT > 0) { const t = Math.max(0, Math.min(1, 1 - (S.flipT - alpha) / 14)); ppos[1] += Math.sin(Math.PI * t) * (R * 0.9 + 2.5); G.princeScr = true; }   // quick turn: hop over the ball (A66)
     // lean into the roll and bob with each step (A63). The model faces -z, so a lean about its x axis tips the head forward
     const moving = S.speed > 0.05, lean = S.dash ? 0.28 : moving ? Math.min(0.1, S.speed * 0.03) : 0, ca = Math.cos(lean), sa = Math.sin(lean);
     const Rl = KSim.mmul(Ry, [1, 0, 0, 0, ca, -sa, 0, sa, ca]); ppos[1] += moving ? Math.abs(Math.sin((ouji.pat + ouji.t / 4) * Math.PI / 2)) * 0.12 : 0;
@@ -256,7 +251,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX2: 'ui/GAMEDT2x/GiFx02.png' };
+const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -321,6 +316,38 @@ function showResult() {
 }
 $('rRetry').onclick = () => restartUI(); $('rMenu').onclick = () => { location.href = 'menu.html?screen=stage&mode=' + MODE; };
 if (window.KText) KText.fit($('rbox'));
+
+// ---- dust kicked up by the ball (GiFx03, small soft puffs) and a "!" over the prince when things fall off (GiHAND is an exclamation mark, not a hand). Original sprites, my timing (A66) ----
+const puffs = []; let bang = 0, airT = 0;
+function addPuff(x, y, z, vx, vy, vz, size, life) { if (puffs.length < 90) puffs.push({ p: [x, y, z], v: [vx, vy, vz], s: size, t0: performance.now(), life }); }
+function burst(n) { const R = KSim.radius(S); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283; addPuff(S.pos[0] + Math.cos(a) * R * 0.8, S.pos[1] - R * 0.9, S.pos[2] + Math.sin(a) * R * 0.8, Math.cos(a) * R * 1.2, R * 0.5 + Math.random() * R * 0.4, Math.sin(a) * R * 1.2, R * (0.35 + Math.random() * 0.25), 500 + Math.random() * 300); } }
+function spawnDust(over) {
+  if (!S || over) return; const R = KSim.radius(S), sp = S.speed, vmax = KSim.tableParams(S).speed;
+  if (!S.grounded) { airT++; return; }
+  if (airT > 6) burst(Math.min(14, 4 + airT / 3)); airT = 0;               // landing after a fall or a ramp
+  if (sp < vmax * 0.5) return;
+  const k = Math.min(1, (sp / vmax - 0.5) / 1.2) * (S.dash ? 1.6 : 0.8); if (Math.random() > k) return;
+  const dx = S.v[0] / sp, dz = S.v[1] / sp, side = (Math.random() - 0.5) * R;
+  addPuff(S.pos[0] - dx * R * 0.7 - dz * side, S.pos[1] - R * 0.95, S.pos[2] - dz * R * 0.7 + dx * side, -dx * sp * 8 + (Math.random() - 0.5) * R, R * 0.35, -dz * sp * 8 + (Math.random() - 0.5) * R, R * (0.25 + Math.random() * 0.2), 450 + Math.random() * 300);
+}
+function projPt(x, y, z) { const m = G.vp; if (!m) return null; const w = m[3] * x + m[7] * y + m[11] * z + m[15]; if (w < 0.05) return null; return { x: (m[0] * x + m[4] * y + m[8] * z + m[12]) / w * 0.5 + 0.5, y: 0.5 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w * 0.5, w }; }
+function drawPuffs(W, H, now) {
+  if (!UI.FX3) return;
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const q = puffs[i], age = now - q.t0; if (age >= q.life) { puffs.splice(i, 1); continue; }
+    const dt = last_dt || 0.016; q.v[1] -= 0.5 * dt * KSim.radius(S) * 4; for (let k = 0; k < 3; k++) q.p[k] += q.v[k] * dt; q.v[0] *= 0.96; q.v[2] *= 0.96;
+    const f = age / q.life, a = projPt(q.p[0], q.p[1], q.p[2]), b = projPt(q.p[0], q.p[1] + q.s * (1 + f), q.p[2]); if (!a || !b) continue;
+    const sz = Math.abs(b.y - a.y) * H * 1.3; if (sz < 1) continue;
+    hx.save(); hx.globalAlpha = 0.55 * (1 - f) * Math.min(1, f * 8); hx.drawImage(UI.FX3, 0, 0, 32, 32, a.x * W - sz / 2, a.y * H - sz / 2, sz, sz); hx.restore();
+  }
+}
+function drawBang(W, H, now) {
+  const age = now - bang; if (!UI.HAND || age > 900) return; const sc = G.ballScr; if (!sc) return;
+  const k = Math.min(1, age / 140), pop = k < 1 ? 1 + 0.4 * Math.sin(k * Math.PI) : 1, fade = age > 650 ? 1 - (age - 650) / 250 : 1;
+  const h = H * 0.12 * pop, w = h * 24 / 76, bob = Math.sin(age / 90) * H * 0.006;
+  hx.save(); hx.globalAlpha = fade; hx.shadowColor = '#0008'; hx.shadowBlur = 6;
+  hx.drawImage(UI.HAND, 0, 0, 24, 76, sc.x * W - w / 2, (sc.y - sc.r) * H - h * 1.05 + bob, w, h); hx.restore();
+}
 // ---- effects on the 2D layer: speed lines while dashing (GiFx01), a ring when something sticks (GiFx02). Original sprites, my timing (A63) ----
 const rings = []; let fxDash = 0;
 function drawFx() {
@@ -334,6 +361,7 @@ function drawFx() {
     }
     hx.restore();
   }
+  drawPuffs(W, H, now); drawBang(W, H, now);
   if (sc && UI.FX2) for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i], p = (now - r.t0) / 420; if (p >= 1) { rings.splice(i, 1); continue; }
     const sz = H * sc.r * 2 * (1.05 + 0.9 * p); hx.save(); hx.globalAlpha = 0.75 * (1 - p); hx.globalCompositeOperation = 'lighter';
@@ -366,6 +394,8 @@ function frame(now) {
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
       if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) activeCatch = { se: CATCH_SE_MAP[cs[2]] !== undefined ? CATCH_SE_MAP[cs[2]] : 20, every: cs[4] || 300, next: S.frame }; }   // A53
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
+      else if (ev.type === 'crumble') { KSnd.se('KD_SE_game_03'); bang = performance.now(); }   // GUESS (A65): which effect the original uses for crumbling is not known
+      else if (ev.type === 'flip') { KSnd.se('KD_SE_oujih_00'); burst(10); }   // GUESS (A66): the hop sound
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); }
     }
     if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
@@ -374,6 +404,7 @@ function frame(now) {
     if (!over && S.frame / KSim.FPS >= S.timeLimit) { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); }
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
     if (!over && (Math.abs(inp.L) > 0.2 || Math.abs(inp.R) > 0.2)) { ouji.t += S.dash ? 2 : 1; if (ouji.t >= 4) { ouji.t = 0; ouji.pat = (ouji.pat + 1) % 4; } } else if (ouji.t === 0) ouji.pat = 0;
+    spawnDust(over);
     acc -= stepDt; n++; G.frames++;
   }
   if (n === 5) acc = 0;
@@ -384,7 +415,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=4`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=9`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task); ball = makeBall();
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }
     task.grow(Object.keys(IMGS).length); await loadUI(task);
@@ -411,6 +442,10 @@ function reportText() {
 }
 $('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false); $('pRestart').onclick = () => { setPause(false); restartUI(); };
 $('pMenu').onclick = () => { location.href = 'menu.html?screen=stage&mode=' + MODE; };
+const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.light][0]; $('pTex').textContent = 'Textures: ' + FILTERS[SET.filter]; };
+$('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
+$('pTex').onclick = () => { SET.filter = (SET.filter + 1) % FILTERS.length; saveSet(); applyFilter(); syncSet(); };
+syncSet();
 $('pCatch').onclick = () => { const u = new URL(location.href); if (qs.get('catch') === 'goal') u.searchParams.delete('catch'); else u.searchParams.set('catch', 'goal'); location.href = u.toString(); };
 $('pReport').onclick = () => { const t = $('pText'); t.value = reportText(); t.style.display = 'block'; t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} try { if (navigator.clipboard) navigator.clipboard.writeText(t.value).catch(() => {}); ok = true; } catch (e) {} $('pNote').textContent = (ok ? 'Copied. ' : 'Select and copy this. ') + 'Paste it into a message and add what went wrong.'; };
 document.addEventListener('visibilitychange', () => { if (document.hidden && S && !S.won && !lost) setPause(true); });

@@ -21,7 +21,7 @@
   }
   // fit a 480x320 box (the art's native size) into the window
   function fit(box) { const f = () => { const s = Math.min(innerWidth / 480, innerHeight / 320); box.style.transform = `translate(${(innerWidth - 480 * s) / 2}px,${(innerHeight - 320 * s) / 2}px) scale(${s})`; }; addEventListener('resize', f); setInterval(f, 400); f(); }   // the interval covers panes that resize without telling the page
-  async function load() { T = await (await fetch('data/strings_en.json?v=4')).json(); return root.KText; }
+  async function load() { T = await (await fetch('data/strings_en.json?v=9')).json(); return root.KText; }
   const fmtSize = cm => cm < 100 ? Math.floor(cm) + 'cm' : (cm / 100).toFixed(1).replace(/\.0$/, '') + 'm';
   root.KText = { load, group, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
 })(window);

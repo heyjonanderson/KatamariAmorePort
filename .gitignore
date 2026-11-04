@@ -3,3 +3,4 @@ __pycache__/
 previews/
 .DS_Store
 _cs/
+audio/*.wav

@@ -148,7 +148,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, crumbleCool: 0, crumbled: 0, flipT: 0, flipLock: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     for (const o of play.objs) {
@@ -253,13 +253,106 @@
     return { turn: 0, power: 0, dir: 0 };
   }
 
+  // ---- lumps (A60, A64) ----
+  // MonoIbitsu.cppi: the farthest IBITSU tip of each of the last N attached objects becomes a "fluid" distort point (up to 6). Katamari.sSetPosition-style code then puts the
+  // surface at len = R + (tip - R) * spd_ratio, capped at 2.5 R: lumps are full size when the ball rolls at or below its normal top speed and melt away toward dash speed.
+  // N (IbitsuCheckDepth) and the cone width (LUMP_SHARP) are guesses; the rest follows the source.
+  const FLIP_FRAMES = 14, FLIP_MIN = 0.3;
+  const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_SHARP = 4, LUMP_CAP = 2.5, LUMP_LIFT_MAX = 0.25;   // the picture shows the full lump, the physics ball rises at most a quarter radius (A64)
+  function lumpsOf(S, R) {
+    const out = [], L = S.ibiList; if (!L || !L.length) return out;
+    const tp = tableParams(S), vN = tp.speed * tp.rF, vD = tp.speed * tp.rD, v = S.speed;
+    const sr = v >= vD ? 0 : v <= vN ? 1 : 1 - (v - vN) / Math.max(vD - vN, 1e-6);
+    for (let i = L.length - 1, seen = 0; i >= 0 && seen < LUMP_DEPTH; i--, seen++) {
+      const o = L[i]; let fl = 0, fq = null;
+      for (const p of S.info[o.n].ibi) { const q = mvec(o.lrot, p); q[0] += o.lpos[0]; q[1] += o.lpos[1]; q[2] += o.lpos[2]; const l = Math.hypot(q[0], q[1], q[2]); if (l > fl) { fl = l; fq = q; } }
+      if (!fq || fl <= R * 1.02) continue;
+      const len = Math.min(R + (fl - R) * sr, R * LUMP_CAP);
+      if (len > R * 1.005) out.push({ n: [fq[0] / fl, fq[1] / fl, fq[2] / fl], k: len / R - 1 });
+    }
+    out.sort((a, b) => b.k - a.k); out.length = Math.min(out.length, LUMP_MAX); return out;
+  }
+  function lumpMult(lumps, d) { let m = 0; for (const Lp of lumps) { const c = Lp.n[0] * d[0] + Lp.n[1] * d[1] + Lp.n[2] * d[2]; if (c > 0) m = Math.max(m, Lp.k * Math.pow(c, LUMP_SHARP)); } return 1 + m; }
+
   // input: {L, R, dash} (stick values -1..1), or {fwd, turn} which is converted with tank(). One call = one frame.
+
+  // ---- crumble and converge (MonoCrumble.cppi, MonoConverge.cppi, KatamariHit sGetSpeedRatio / sGetReflectionRatio) (A65) ----
+  // The KPARAM values (CrumbleAngle, CrumbleSpeedRatio, CrumbleRatio, CrumbleDepth, CrumbleSpdRatio, IbitsuConvergeRatio) are not in the sources: GUESSED, kept mild
+  const CR = { angle: 0.3, spd: 0.5, vol: 0.1, depth: 10, fly: 1.0, pop: 0.35, cool: 15, hitOff: 10, conv: 0.02, convMin: 0.5, flyMax: 240 };
+  // speed power x angle power of one hit: ground type of sGetSpeedRatio ((v/vmax - 0.25) / 0.25) times (acos(move . wall) - 90 deg) / 90 deg
+  function impactPower(vx, vz, nx, nz, vIn, vmax) {
+    if (vIn < 1e-6) return 0; const inner = (vx * nx + vz * nz) / vIn; if (inner >= 0) return 0;
+    const ref = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2), sp = Math.max(0, Math.min(1, (Math.min(1, vIn / vmax) - 0.25) / 0.25));
+    return sp * ref;
+  }
+  function crumbleHit(S, total, vIn, vmax) {                 // gYm_MonoCrumble
+    if (total <= CR.angle || S.crumbleCool > 0) return;
+    const smin = vmax * CR.spd, cs = Math.max(0, Math.min(vIn, vmax) - smin) / (vmax - smin); if (cs <= 0) return;
+    const power = (total - CR.angle) / (1 - CR.angle);
+    crumbleVol(S, CR.vol * S.volume * power * cs, power);
+  }
+  function crumbleVol(S, vol, power) {                       // sCrumble: newest objects first, big ones soak up the hit and carry the rest over
+    let depth = CR.depth, n = 0;
+    for (let i = S.attached.length - 1; i >= 0 && depth > 0; i--) {
+      const o = S.attached[i];
+      if (o.crumbleVol > vol) o.crumbleVol -= vol;
+      else { crumbleOne(S, i, power); n++; vol -= o.addVol; if (vol <= 0) break; }
+      depth--;
+    }
+    if (n) { S.crumbleCool = CR.cool; S.crumbled += n; S.events.push({ type: 'crumble', n }); }
+  }
+  function crumbleOne(S, i, power) {                         // sCrumbleOneMono: volume comes off, the object leaves the ball and is thrown away from the centre
+    const o = S.attached[i]; S.attached.splice(i, 1);
+    const k = S.ibiList.indexOf(o); if (k >= 0) S.ibiList.splice(k, 1);
+    const wp = mvec(S.R, o.lpos), wr = mmul(S.R, o.lrot);
+    o.pos = [S.pos[0] + wp[0], S.pos[1] + wp[1], S.pos[2] + wp[2]]; o.rot = wr; o.ppos = null;
+    grow(S, -Math.min(o.addVol, S.volume * 0.5)); S.picked--;
+    const h = Math.hypot(wp[0], wp[2]) || 1, tp = tableParams(S), spd = tp.speed * tp.rF * (0.6 + 0.4 * power) * CR.fly;
+    o.vel = [wp[0] / h * spd, spd * CR.pop, wp[2] / h * spd];
+    o.spin = { ax: norm([wp[2], 0, -wp[0]]), w: 0.15 + 0.25 * power };
+    o.state = 'fly'; o.flyT = 0; o.hitOff = S.frame + CR.hitOff; o.crumbleVol = 0; o.path = null;
+  }
+  function flyMonos(S) {                                     // thrown objects: ballistic until they reach the floor, then they lie there and can be caught again
+    for (const o of S.objs) {
+      if (o.state !== 'fly') continue;
+      o.ppos = o.pos.slice(); o.vel[1] -= gravity(S); o.flyT++;
+      for (let q = 0; q < 3; q++) o.pos[q] += o.vel[q];
+      o.rot = mmul(axisAngle(o.spin.ax, o.spin.w), o.rot);
+      const bottom = o.pos[1] + o.lo[1], sup = o.vel[1] <= 0 ? supportAt(S, o.pos[0], o.pos[2], bottom + Math.abs(o.vel[1]) + 1, bottom + Math.abs(o.vel[1]) + 1) : null;
+      if (sup !== null && bottom <= sup) { o.pos[1] = sup - o.lo[1]; land(o); }
+      else if (o.flyT > CR.flyMax || o.pos[1] < -5000) { o.state = 'gone'; }   // fell off the map
+    }
+  }
+  function land(o) { o.state = 'map'; o.rot = o.rotHome; o.top = o.pos[1] + o.hi[1]; o.ppos = null; o.vel = null; }
+  // MonoConverge: a lump dragging on the ground pulls the objects near it in toward the centre, harder the faster the ball goes
+  function converge(S, R, vmax) {
+    if (!S.lumps.length || S.lift < 1e-3) return;
+    const ratio = 1 - Math.min(1, S.speed / vmax) * CR.conv; if (ratio >= 1) return;
+    const dn = mvec(mtr(S.R), [0, -1, 0]);
+    for (const L of S.lumps) {
+      if (L.n[0] * dn[0] + L.n[1] * dn[1] + L.n[2] * dn[2] < 0.6) continue;           // this lump is the one on the ground
+      for (const a of S.attached) {
+        const m = Math.hypot(a.lpos[0], a.lpos[1], a.lpos[2]); if (m < CR.convMin * R) continue;
+        if ((a.lpos[0] * L.n[0] + a.lpos[1] * L.n[1] + a.lpos[2] * L.n[2]) / m < 0.7) continue;      // near this lump
+        a.lpos = [a.lpos[0] * ratio, a.lpos[1] * ratio, a.lpos[2] * ratio];
+      }
+    }
+  }
+
   function step(S, input) {
-    S.frame++; S.events.length = 0; moveMonos(S);
+    S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
     const inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
+    // lumps lift the ball: the surface point that faces down decides how high the centre rides. Eased so it does not jitter (A64)
+    S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
+    S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
     const st = readSticks(inp.L, inp.R);
-    S.yaw += st.turn;                                   // + turn = right. The picture is mirrored on screen (P20), so right = yaw increases in this space
+    // quick turn (OSTAT Jump180): pulling both sticks back while rolling makes the prince hop over the ball to the other side and face the other way.
+    // The state exists in the sources but what sets it does not, so the trigger and timing are guessed (A66)
+    { const sp = Math.sin(S.yaw), cp = Math.cos(S.yaw);
+      if (S.flipT === 0 && !S.flipLock && st.dir === -1 && st.power >= 0.6 && S.v[0] * sp + S.v[1] * cp > FLIP_MIN * tp.speed) { S.flipT = FLIP_FRAMES; S.events.push({ type: 'flip' }); }
+      if (st.dir !== -1 && S.flipT === 0) S.flipLock = false;
+      if (S.flipT > 0) { S.yaw += Math.PI / FLIP_FRAMES; S.flipT--; if (S.flipT === 0) S.flipLock = true; } else S.yaw += st.turn; }
     S.input = { L: inp.L, R: inp.R, turn: st.turn, power: st.power };
     // dash: up to DASH_DURATION frames, then DASH_FORBID frames of cooldown (PLACEHOLDER: the real dash is a swipe gesture, see P11)
     if (S.dashCool > 0) S.dashCool--;
@@ -268,7 +361,7 @@
     S.dash = wantDash && S.dashCool === 0;
     // acceleration along the facing direction, capped at the table speed (sControl)
     const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
-    let acc = 0, ratio = 0, dir = st.dir, power = st.power;
+    let acc = 0, ratio = 0, dir = (S.flipT > 0 || (S.flipLock && st.dir === -1)) ? 0 : st.dir, power = st.power;
     if (S.dash) { power = 1; acc = tp.accD; ratio = tp.rD; }
     else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * (MIN_POWER_SPEED + (1 - MIN_POWER_SPEED) * power); }
     else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * (MIN_POWER_SPEED + (1 - MIN_POWER_SPEED) * power); }
@@ -285,6 +378,7 @@
     }
     vx *= 1 - DRAG; vz *= 1 - DRAG;
     if (Math.hypot(vx, vz) < 1e-3) { vx = 0; vz = 0; }
+    const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed * tp.rD; let hitPow = 0;   // incoming velocity, for crumble
     const bottom = S.pos[1] - R;
     const ok = (x, z) => supportAt(S, x, z, bottom + stepUp, bottom + climb) !== null;
     let dx = vx, dz = vz, moved = 0, mx = 0, mz = 0;
@@ -305,10 +399,11 @@
       const bc = boxClosest(o, S.pos); if (bc.dist >= R || bc.dist < 1e-6) continue;
       const nx = S.pos[0] - bc.p[0], nz = S.pos[2] - bc.p[2], hl = Math.hypot(nx, nz); if (hl < 1e-6) continue;
       const push = (R - bc.dist) / bc.dist, px = S.pos[0] + (S.pos[0] - bc.p[0]) * push, pz = S.pos[2] + (S.pos[2] - bc.p[2]) * push;
-      if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl, vn = vx * ux + vz * uz; if (vn < 0) { vx -= vn * ux; vz -= vn * uz; } }
+      if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl, vn = vx * ux + vz * uz; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, ux, uz, vIn, vmax)); vx -= vn * ux; vz -= vn * uz; } }
     }
     // walls from the collision mesh
-    for (const n of hitWalls(S, R)) { const vn = vx * n[0] + vz * n[1]; if (vn < 0) { vx -= vn * n[0]; vz -= vn * n[1]; } }
+    for (const n of hitWalls(S, R)) { const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
+    if (hitPow > 0) crumbleHit(S, hitPow, vIn, vmax);
     S.v[0] = vx; S.v[1] = vz; S.speed = Math.hypot(vx, vz); if (S.rampLift) S.vy = Math.max(S.vy, 0);
     // vertical
     const g = gravity(S); S.vy -= g;
@@ -327,13 +422,13 @@
     // pickup
     const cdm = S.diam * 10;
     for (const o of S.objs) {
-      if (o.state !== 'map' || cdm < o.catchMm) continue;
+      if (o.state !== 'map' || cdm < o.catchMm || (o.hitOff && o.hitOff > S.frame)) continue;
       const v = [o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]];
       if (Math.hypot(v[0], v[1], v[2]) > R + o.maxlen) continue;            // broad phase: ball radius + object bounding radius >= distance (gYm_MonoHitCheck)
       if (boxClosest(o, S.pos).dist > R) continue;                         // ball surface touches the box (PLACEHOLDER P5: stands in for the engine's ray and box test)
       const Rt = mtr(S.R), lp = mvec(Rt, v);                                // relative position kept as it was at pickup, no clamping (gYm_MonoHitSetInfo)
-      o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); S.attached.push(o); S.picked++;
-      const add = o.boxvol * o.addRatio * addRatio(S); grow(S, add);
+      o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); S.attached.push(o); S.picked++; if (S.info[o.n].ibi) S.ibiList.push(o);
+      const add = o.boxvol * o.addRatio * addRatio(S); o.addVol = add; o.crumbleVol = add; if (!o.rotHome) o.rotHome = o.rot; grow(S, add);
       S.events.push({ type: 'pickup', name: o.n, add }); if (S.target && o.n === S.target && !S.won) { S.won = true; S.events.push({ type: 'won' }); }
     }
     // object layers (MP_INF): layer 0 is live until the ball reaches its 'until' diameter, then the next area opens (P21: the whole mechanism is inferred)
@@ -345,8 +440,10 @@
     // ERASE_STOPPER: [diameter cm, hit kind]. When the ball reaches the diameter, that kind of collision polygon stops blocking (A33)
     for (const st of S.stoppers) if (!S.erased[st[1]] && S.diam >= st[0]) { S.erased[st[1]] = true; S.events.push({ type: 'area', kind: st[1] }); }
     if (!S.won && !S.target && !S.noWin && S.diam >= S.goal) { S.won = true; S.events.push({ type: 'won' }); }
+    converge(S, R, vmax);
+    S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { splineAt, moveMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { splineAt, moveMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -81,7 +81,7 @@ const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catc
 async function brief(i) {
   if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES[i]; plays = plays || {};
-  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=4`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=9`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
   const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit || [], v = { goal };
   let pages;
