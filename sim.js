@@ -335,7 +335,7 @@
     // object layers (MP_INF): layer 0 is live until the ball reaches its 'until' diameter, then the next area opens (P21: the whole mechanism is inferred)
     const LY = S.layers; if (LY && S.layer + 1 < LY.length && LY[S.layer].until > 0 && S.diam >= LY[S.layer].until) {
       const from = S.layer; S.layer++;
-      for (const o of S.objs) if (o.state === 'hidden' && o.layer === S.layer) o.state = 'map';
+      for (const o of S.objs) if (o.state === 'hidden' && o.layer === S.layer) { o.state = 'map'; o.born = S.frame; }   // born: the renderer grows new objects in instead of popping them (A51)
       S.events.push({ type: 'layer', layer: S.layer });
     }
     // ERASE_STOPPER: [diameter cm, hit kind]. When the ball reaches the diameter, that kind of collision polygon stops blocking (A33)

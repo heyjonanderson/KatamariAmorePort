@@ -21,7 +21,7 @@ const glp = new Proxy({}, { get: (t, k) => { if (k in t) return t[k]; return (..
 const el = () => { const e = { style: {}, dataset: {}, textContent: '', clientWidth: 800, clientHeight: 600, width: 0, height: 0, firstElementChild: null, children: [],
   getContext: () => new Proxy({}, { get: (tg, k) => (k in tg ? tg[k] : () => undefined), set: (tg, k, v) => { tg[k] = v; return true; } }), addEventListener() {}, setPointerCapture() {}, appendChild() {}, set onclick(f) {} }; return e; };
 const els = {}; const canvas = el(); canvas.getContext = () => glp;
-const doc = { getElementById: id => id === 'c' ? canvas : (els[id] = els[id] || (() => { const e = el(); e.firstElementChild = el(); return e; })()), createElement: () => { const e = el(); return e; } };
+const doc = { getElementById: id => id === 'c' ? canvas : (els[id] = els[id] || (() => { const e = el(); e.firstElementChild = el(); return e; })()), createElement: () => { const e = el(); return e; }, addEventListener() {}, hidden: false };
 let raf = null; const listeners = {};
 const ctx = { document: doc, window: null, console, Math, Promise, Float32Array, Uint16Array, Array, Object, Set, Map, JSON, URLSearchParams, Error, Number, String, isFinite,
   location: { search: process.env.QS || '' }, requestAnimationFrame: f => { raf = f; return 1; }, devicePixelRatio: 1,

@@ -14,7 +14,7 @@
   }
   function load(name) {
     if (buf.has(name)) return Promise.resolve(buf.get(name)); if (pending.has(name)) return pending.get(name);
-    const p = fetch(BASE + name + '.m4a').then(r => r.ok ? r : fetch(BASE + name + '.wav')).then(r => { if (!r.ok) throw new Error(name); return r.arrayBuffer(); })
+    const p = fetch(BASE + name + (/^BGM_ST0[1-5]/.test(name) ? '.m4a' : '.wav')).then(r => r.ok ? r : fetch(BASE + name + '.wav')).then(r => { if (!r.ok) throw new Error(name); return r.arrayBuffer(); })
       .then(a => new Promise((ok, no) => ctx.decodeAudioData(a, ok, no))).then(b => { buf.set(name, b); return b; }).catch(() => null);
     pending.set(name, p); return p;
   }

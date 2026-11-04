@@ -38,6 +38,9 @@ function stageScreen() {
     const t = document.createElement('div'); t.className = 'tile' + (i >= PLAYABLE ? ' off' : ''); t.style.left = x + 'px'; t.style.top = y + 'px'; t.style.backgroundPosition = `${-ax * 308 / 512 - 1}px ${-ay * 308 / 512 - 1}px`;
     const l = document.createElement('div'); l.className = 'tlab'; l.style.left = (x - 3) + 'px'; l.style.top = (y + 88) + 'px'; l.textContent = names[i] || st;
     box.appendChild(t); box.appendChild(l);
+    { let r = {}; try { r = (JSON.parse(localStorage.getItem('kam_rec') || '{}'))[st] || {}; } catch (e) {}
+      const txt = mode === 'story' ? (r.story ? 'best ' + KT.fmtTime(r.story) : '') : (r[mode] ? 'best ' + (r[mode] >= 100 ? (r[mode] / 100).toFixed(2) + ' m' : r[mode].toFixed(1) + ' cm') : '');
+      if (txt) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 62) + 'px'; f.style.color = '#8dff8d'; f.textContent = (mode === 'story' && r.cleared ? '\u2713 ' : '') + txt; box.appendChild(f); } }
     if (i >= PLAYABLE) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'not ported'; box.appendChild(f); }
     else if (i > 0) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'rough'; box.appendChild(f); }
     t.onclick = () => { if (i >= PLAYABLE) { $('stInfo').textContent = KT.group('COMING_SOON')[0].replace('\n', ' '); return; } KSnd.se('KD_SE_common_00'); brief(i); };

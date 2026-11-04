@@ -18,7 +18,7 @@ for st in STAGES:
     sp = floats(sec['SPEED_TABLE'][1]); recs = [sp[2+21*k: 23+21*k] for k in range((len(sp)-2)//21)]
     md = sec['MISSION_DATA'][1]; mf = [struct.unpack('>f', md[7+4*k: 11+4*k])[0] for k in range(11)]
     cf = floats(sec['CAMERA_DATA'][1]); cam = [cf[i:i+10] for i in range(0, len(cf) - 9, 10) if cf[i] >= 0]
-    gb = sec['GRAPHICS'][1]; gr = struct.unpack('>2f', gb[2:10])
+    gb = sec['GRAPHICS'][1]; gr = struct.unpack('>4f', gb[2:18])
     tb = sec['TIME_LIMIT'][1]; tl = list(struct.unpack('>%dI' % struct.unpack('>H', tb[:2])[0], tb[2:]))
     es = sec['ERASE_STOPPER'][1] if 'ERASE_STOPPER' in sec else b'\x00\x00'; en = struct.unpack('>H', es[:2])[0]; ev = list(struct.unpack('>%di' % en, es[2:2+4*en])); stoppers = []
     for k in range(0, len(ev) - 1, 2):
@@ -26,7 +26,7 @@ for st in STAGES:
         stoppers.append([ev[k], ev[k+1]])
     ex = sec['MISSION_DATA_EXT'][1]; target = ex[10:26].decode('latin1').strip()
     mis = dict(target=target, target_raw=target, stoppers=stoppers, addvol=floats(sec['VOLUME_RATIO'][1]), gravity=floats(sec['GRAVITY'][1]), speed=[list(r) for r in recs if len(r) == 21 and r[0] >= 0],
-               mission_floats=mf, time_limit=tl, camera=cam, near=gr[0], far=gr[1], ouji_scale=floats(sec['OUJI_SCALE'][1])[0])
+               mission_floats=mf, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0])
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLST.dat'); mst = (d, b, e); mons, _ = T.parse_monolist(chunk(d, b, e, 'MONOLIST'))
     d, b, e, _ = dat.parse(f'{SRC}/{st}OBJM.dat'); have = {x[1]: mdl.parse(d[b+x[2]+4: b+x[2]+x[3]]) for x in e if x[0] == 2}
     nd, nb, ne, _ = dat.parse(f'{SRC}/English.lproj/MONONAME.dat'); nch = chunk(nd, nb, ne, 'MONONA%02d' % (int(st[1:]) - 1)); names_en = []

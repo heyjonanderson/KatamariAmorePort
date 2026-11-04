@@ -105,8 +105,10 @@ let last_dt = 0.016, acc = 0, last = 0, prevPos = [0,0,0], prevYaw = 0, lost = f
 const UI = {};                                // HUD images
 
 
+// CATCH_SE = [2, 0, n, 0, every]: n picks one of three sounds, every = repeat interval in frames. The file for each n is a guess from clip lengths (A53)
+const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
@@ -124,7 +126,7 @@ function readInput() {
   const t = KSim.tank(fwd, left * (fwd ? 0.5 : 1));     // while driving, steer gently; standing still, spin
   return { L: t.L, R: t.R, dash };
 }
-window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') restart(); if (e.code === 'KeyM') { KSnd.setMuted(!KSnd.isMuted()); syncSnd(); } if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); });
+window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') restart(); if (e.code === 'Escape' || e.code === 'KeyP') setPause(!paused); if (e.code === 'KeyM') { KSnd.setMuted(!KSnd.isMuted()); syncSnd(); } if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 const bSnd = document.getElementById('bSnd'); const syncSnd = () => { bSnd.textContent = KSnd.isMuted() ? 'Sound off' : 'Sound on'; }; bSnd.onclick = () => { KSnd.setMuted(!KSnd.isMuted()); syncSnd(); }; syncSnd();
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -178,7 +180,7 @@ function draw(alpha) {
   cam.L = Math.min(cam.L, clearFor(cam.e, cam.L));                       // safety: smoothed values must not poke through
   const eye = eyeAt(cam.e, cam.L);
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
-  const far = Math.max(cp.far, play.mis.far || 800, cam.back * 3);
+  const far = Math.max(cp.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
   const vp = M.mul(M.persp(0.9, w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
   gl.useProgram(P); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
@@ -186,7 +188,9 @@ function draw(alpha) {
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
   bindGroup(og);
-  for (const o of S.objs) { if (o.state !== 'map') continue; const m = og.mods[o.model]; if (m) drawModel(og, m, objMat(o.rot, o.ppos ? [0,1,2].map(k => o.ppos[k] + (o.pos[k] - o.ppos[k]) * alpha) : o.pos)); }
+  for (const o of S.objs) { if (o.state !== 'map') continue; const m = og.mods[o.model]; if (!m) continue;
+    let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
+    drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
   // attached objects: world = T(ball) * R * [lrot | lpos]
   for (const o of S.attached) {
     const m = og.mods[o.model]; if (!m) continue;
@@ -260,7 +264,7 @@ let toast = null, resShown = false, dlgRes = null;
 
 // End of a run: the King comments in his own words (STRING.dat). Which line set is used for which result is a guess (A43)
 function showResult() {
-  resShown = true; const KT = window.KText; if (!KT) return;
+  resShown = true; const KT = window.KText; if (!KT) return; saveRecord();
   const elapsed = S.frame / KSim.FPS, left = S.timeLimit - elapsed, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) };
   let names;
   if (MODE === 'story') {
@@ -286,6 +290,7 @@ function frame(now) {
   if (!G.ready) return;
   const dt = Math.min((now - last) / 1000, 0.25); last = now; last_dt = dt;
   cam.k = 1 - Math.exp(-dt * 8);
+  if (paused) { acc = 0; return; }
   acc += dt; const stepDt = 1 / KSim.FPS;
   const inp = readInput();
   let n = 0;
@@ -295,9 +300,11 @@ function frame(now) {
     KSim.step(S, over ? { L: 0, R: 0 } : inp);
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') { const i = S.info[ev.name], c = i && i.cat; if (c !== undefined) KSnd.se('KD2_SE_mono_' + String(c).padStart(2, '0')); }
+      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) activeCatch = { se: CATCH_SE_MAP[cs[2]] !== undefined ? CATCH_SE_MAP[cs[2]] : 20, every: cs[4] || 300, next: S.frame }; }   // A53
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); }
     }
+    if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'area')) toast = { t: 4 * KSim.FPS, text: 'New area unlocked' };   // PLACEHOLDER (P21): the original's cue is unknown
     if (!over && S.frame / KSim.FPS >= S.timeLimit) { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); }
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
@@ -319,3 +326,33 @@ function frame(now) {
   } catch (e) { G.err.push(String(e)); $('load').textContent = 'load failed: ' + e; }
   requestAnimationFrame(t => { last = t; frame(t); });
 })();
+
+// ---- pause menu and tester report ----
+// The catch rule is the one open question that changes the stage 1 feel (A48), so testers can flip it here. It reloads the page with ?catch=goal or without it.
+function setPause(on) {
+  if (S && (S.won || lost)) on = false;
+  paused = on; $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
+  if (on) { const cm = qs.get('catch') === 'goal'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'fitted to the goal' : 'from the data (default)') + ' (tap to switch)'; }
+}
+function reportText() {
+  const now = performance.now(); const fps = Math.round(1000 / Math.max(1, last_dt * 1000));
+  return ['Katamari Amore web port report', 'url: ' + location.href, 'stage: ' + STAGE + '  mode: ' + MODE + '  catch: ' + (qs.get('catch') || 'default'),
+    'time: ' + (S.frame / KSim.FPS).toFixed(1) + ' s of ' + (S.timeLimit === Infinity ? 'no limit' : S.timeLimit) + '  diameter: ' + fmtDiam(S.diam) + '  goal: ' + fmtDiam(S.goal),
+    'picked: ' + S.picked + '  layer: ' + S.layer + '  pos: ' + S.pos.map(v => v.toFixed(1)).join(', ') + '  target: ' + (S.targetLabel || 'none'),
+    'fps ~' + fps + '  window: ' + innerWidth + 'x' + innerHeight + '  touch: ' + ('ontouchstart' in window), 'ua: ' + navigator.userAgent, '', 'what happened: '].join('\n');
+}
+$('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false); $('pRestart').onclick = () => { setPause(false); restart(); };
+$('pMenu').onclick = () => { location.href = 'menu.html?screen=stage&mode=' + MODE; };
+$('pCatch').onclick = () => { const u = new URL(location.href); if (qs.get('catch') === 'goal') u.searchParams.delete('catch'); else u.searchParams.set('catch', 'goal'); location.href = u.toString(); };
+$('pReport').onclick = () => { const t = $('pText'); t.value = reportText(); t.style.display = 'block'; t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} try { if (navigator.clipboard) navigator.clipboard.writeText(t.value).catch(() => {}); ok = true; } catch (e) {} $('pNote').textContent = (ok ? 'Copied. ' : 'Select and copy this. ') + 'Paste it into a message and add what went wrong.'; };
+document.addEventListener('visibilitychange', () => { if (document.hidden && S && !S.won && !lost) setPause(true); });
+
+// ---- records (localStorage, per stage and mode): best clear time for story, biggest ball for the other two ----
+function saveRecord() {
+  try {
+    const rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'), r = rec[STAGE] = rec[STAGE] || {}, el = S.frame / KSim.FPS;
+    if (MODE === 'story') { if (S.won && (!r.story || el < r.story)) { r.story = +el.toFixed(1); r.newBest = true; } r.cleared = r.cleared || !!S.won; }
+    else { const k = MODE; if (!r[k] || S.diam > r[k]) { r[k] = +S.diam.toFixed(1); r.newBest = true; } }
+    localStorage.setItem('kam_rec', JSON.stringify(rec)); return r.newBest;
+  } catch (e) { return false; }
+}
