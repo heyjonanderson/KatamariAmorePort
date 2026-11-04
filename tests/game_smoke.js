@@ -23,7 +23,7 @@ const el = () => { const e = { style: {}, dataset: {}, textContent: '', clientWi
 const els = {}; const canvas = el(); canvas.getContext = () => glp;
 const doc = { getElementById: id => id === 'c' ? canvas : (els[id] = els[id] || (() => { const e = el(); e.firstElementChild = el(); return e; })()), createElement: () => { const e = el(); return e; }, addEventListener() {}, hidden: false };
 let raf = null; const listeners = {};
-const ctx = { document: doc, window: null, console, Math, Promise, Float32Array, Uint16Array, Array, Object, Set, Map, JSON, URLSearchParams, Error, Number, String, isFinite,
+const ctx = { document: doc, window: null, console, setTimeout, clearTimeout, performance, Math, Promise, Float32Array, Uint16Array, Array, Object, Set, Map, JSON, URLSearchParams, Error, Number, String, isFinite,
   location: { search: process.env.QS || '' }, requestAnimationFrame: f => { raf = f; return 1; }, devicePixelRatio: 1,
   fetch: async url => { const p = path.join(root, url.split('?')[0]); if (!fs.existsSync(p)) throw new Error('404 ' + url); const buf = fs.readFileSync(p); return { json: async () => JSON.parse(buf), arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) }; },
   Image: class { set src(v) { this.width = 64; this.height = 64; setTimeout(() => this.onload(), 0); } } };

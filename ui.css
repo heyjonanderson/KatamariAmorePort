@@ -32,3 +32,20 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-
 @keyframes dpop { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: scale(1); } }
 @keyframes dbob { 50% { margin-top: -7px; } }
 #dDlg { left: 0; right: 0; bottom: 0; height: 64px; border-radius: 0; border: 0; border-top: 2px solid #ffd24a; background: #000; text-align: center; font-size: 14px; padding: 6px 12px; }
+
+/* loading feedback (load.js): spinner first, a bar once it has taken over 2 s */
+#kload { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 50; pointer-events: none; font-family: "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif; color: #fff; }
+#kload.on { display: flex; }
+#kload.cover { background: #101418; pointer-events: auto; }
+#kload .kl-box { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 22px; border-radius: 12px; background: rgba(16, 20, 24, .78); min-width: 150px; }
+#kload.cover .kl-box { background: none; }
+#kload .kl-spin { width: 28px; height: 28px; border: 4px solid rgba(255, 255, 255, .25); border-top-color: #ffd24a; border-radius: 50%; animation: klspin .8s linear infinite; }
+#kload .kl-bar { display: none; width: min(260px, 70vw); height: 12px; border-radius: 6px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+#kload .kl-bar i { display: block; height: 100%; width: 0; background: #ffd24a; border-radius: 6px; transition: width .15s linear; }
+#kload .kl-bar.ind i { animation: klslide 1.1s ease-in-out infinite alternate; transition: none; }
+#kload.long .kl-spin { display: none; }
+#kload.long .kl-bar { display: block; }
+#kload .kl-txt { font-size: 14px; text-shadow: 0 1px 3px #000; }
+@keyframes klspin { to { transform: rotate(360deg); } }
+@keyframes klslide { from { margin-left: 0; } to { margin-left: 65%; } }
+@media (prefers-reduced-motion: reduce) { #kload .kl-spin { animation-duration: 2.4s; } }

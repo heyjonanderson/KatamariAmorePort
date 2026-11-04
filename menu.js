@@ -80,7 +80,9 @@ const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catc
 // the King's lines for a stage and mode. [GOAL] is the stage's target (TARGET_ID), [TIME] the mode's time limit from the stage's MIS file
 async function brief(i) {
   if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
-  const st = STAGES[i]; plays = plays || {}; const p = plays[st] = plays[st] || await (await fetch(`data/${st}/play.json?v=3`)).json();
+  const st = STAGES[i]; plays = plays || {};
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=4`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  const p = plays[st];
   const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit || [], v = { goal };
   let pages;
   if (mode === 'story') { v.time = KT.fmtTime(tl[0] || 360); pages = KT.pages([[KT.group('STORY_INFO')[i]], 'STORY_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(0, 4)], v); }

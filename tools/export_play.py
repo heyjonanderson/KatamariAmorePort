@@ -75,6 +75,13 @@ for st in STAGES:
                 if q['name'] in info: objs.append(dict(n=q['name'], layer=int(n[-2:]), p=[round(q['pos'][0], 3), round(q['pos'][1], 3), round(-q['pos'][2], 3)], r=[round(x, 3) for x in q['rot']]))
     # HIT_MAP collision polygons, triangulated, z mirrored to view space. Sim treats steep ones as walls and uses all of them for camera rays
     d, b, e, _ = dat.parse(f'{SRC}/{st}IBI.dat'); hv, hp, _ok = T.parse_hitmap(chunk(d, b, e, 'HIT_MAP')); hit = []
+    ib = chunk(d, b, e, 'IBITSU')                         # per-object shape points (model space): [u16 n, n x (name16, type, u32 offset)], each record u16 floatcount + xyz triples (A60)
+    if ib:
+        for q in range(struct.unpack('>H', ib[:2])[0]):
+            o = 2 + 21 * q; nm = ib[o:o+16].decode('latin1').strip(); off = struct.unpack('>I', ib[o+17:o+21])[0]; fc = struct.unpack('>H', ib[off:off+2])[0]
+            fl = struct.unpack('>%df' % fc, ib[off+2: off+2+4*fc])
+            if nm in info: info[nm]['ibi'] = [[round(fl[k], 3), round(fl[k+1], 3), round(-fl[k+2], 3)] for k in range(0, fc - 2, 3)]
+
     hit_kind = []
     for pl in hp:
         ix = pl[1:]
