@@ -21,7 +21,11 @@
   }
   // fit a 480x320 box (the art's native size) into the window
   function fit(box) { const f = () => { const s = Math.min(innerWidth / 480, innerHeight / 320); box.style.transform = `translate(${(innerWidth - 480 * s) / 2}px,${(innerHeight - 320 * s) / 2}px) scale(${s})`; }; addEventListener('resize', f); setInterval(f, 400); f(); }   // the interval covers panes that resize without telling the page
-  async function load() { T = await (await fetch('data/strings_en.json?v=9')).json(); return root.KText; }
-  const fmtSize = cm => cm < 100 ? Math.floor(cm) + 'cm' : (cm / 100).toFixed(1).replace(/\.0$/, '') + 'm';
-  root.KText = { load, group, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
+  // Languages: the app ships STRING.dat for six languages (exported by tools/export_strings.py). The choice is kept in localStorage (A77)
+  const LANGS = [['en', 'English'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['es', 'Español'], ['ja', '日本語']];
+  let lang = 'en'; try { const l = localStorage.getItem('kl_lang'); if (LANGS.some(x => x[0] === l)) lang = l; } catch (e) {}
+  const nextLang = () => { const c = LANGS[(LANGS.findIndex(x => x[0] === lang) + 1) % LANGS.length][0]; try { localStorage.setItem('kl_lang', c); } catch (e) {} return c; };
+  async function load() { T = await (await fetch('data/strings_' + lang + '.json?v=14')).json(); return root.KText; }
+  const fmtSize = cm => { const t = Math.floor(cm * 10 + 1e-6), m = Math.floor(t / 1000), c = Math.floor((t % 1000) / 10), mm = t % 10; return m > 0 ? m + 'm' + String(c).padStart(2, '0') + 'cm' + mm + 'mm' : c > 0 ? c + 'cm' + mm + 'mm' : mm + 'mm'; };   // A72
+  root.KText = { load, LANGS, nextLang, get lang() { return lang; }, group, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
 })(window);

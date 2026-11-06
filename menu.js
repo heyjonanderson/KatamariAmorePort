@@ -11,6 +11,9 @@ const MODES = [
   { id: 'eternal', name: 'Eternal', info: -1 },
   { id: 'exact', name: 'Exact Size', info: 2 },
 ];
+// Mode button labels in each language. These are MY wording (the original draws them as pictures), see A77
+const MODE_NAMES = { en: ['Story', 'Time Attack', 'Eternal', 'Exact Size'], fr: ['Histoire', 'Contre la montre', 'Éternel', 'Taille exacte'], de: ['Geschichte', 'Zeitangriff', 'Ewig', 'Exakte Größe'], it: ['Storia', 'Contro il tempo', 'Eterno', 'Misura esatta'], es: ['Historia', 'Contrarreloj', 'Eterno', 'Tamaño exacto'], ja: ['ストーリー', 'タイムアタック', 'エターナル', 'ジャストサイズ'] };
+{ const n = MODE_NAMES[(window.KText && KText.lang) || 'en'] || MODE_NAMES.en; MODES.forEach((x, i) => { x.name = n[i]; }); }
 let mode = qs.get('mode') || 'story', plays = null, dlg = null;
 const show = id => { for (const s of document.querySelectorAll('.scr')) s.classList.toggle('on', s.id === id); };
 const KT = window.KText;
@@ -81,7 +84,7 @@ const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catc
 async function brief(i) {
   if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES[i]; plays = plays || {};
-  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=9`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=13`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
   const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit || [], v = { goal };
   let pages;
@@ -96,5 +99,6 @@ async function brief(i) {
 
 (async function () {
   KT.fit($('box')); await KT.load();
+  $('tLang').textContent = KT.LANGS.find(x => x[0] === KT.lang)[1] + ' \u25B8'; $('tLang').onclick = e => { e.stopPropagation(); KT.nextLang(); location.reload(); };
   if (qs.get('screen') === 'stage') stageScreen(); else if (qs.get('screen') === 'mode') modeScreen(); else if (qs.get('screen') === 'demo') demo(stageScreen); else logo();
 })();

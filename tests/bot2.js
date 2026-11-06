@@ -45,7 +45,7 @@ for (let f = 0; f < maxF && !S.won && S.frame < maxF; f++) {
     const w = r[Math.min(plan.idx + 2, r.length - 1)], want = Math.atan2(w[0] * CELL - S.pos[0], w[1] * CELL - S.pos[2]), e = ang(S.yaw, want);
     inp = { turn: Math.max(-1, Math.min(1, -e * 3)), fwd: Math.abs(e) < 1.0 ? 1 : 0 };
     noTarget = 0;
-  } else { noTarget++; inp = { turn: 0.5, fwd: 0 }; if (noTarget > 600) { log.push('no reachable catchable target at frame ' + S.frame + ' diam ' + S.diam.toFixed(2)); break; } }
+  } else { noTarget++; inp = { turn: 0.5, fwd: noTarget % 120 > 60 ? 1 : 0 }; /* wander a little: the planner can sit in a cell it thinks is blocked */ if (noTarget > 600) { log.push('no reachable catchable target at frame ' + S.frame + ' diam ' + S.diam.toFixed(2)); break; } }
   if (process.env.TRACE && S.frame % 300 === 0) console.log(S.frame, 'pos', S.pos.map(v => v.toFixed(0)).join(','), 'diam', S.diam.toFixed(1), 'target', plan.target && plan.target.n + '@' + plan.target.pos.map(v => v.toFixed(0)), 'route', plan.route ? plan.route.length : 0);
   const before = S.picked; K.step(S, inp); if (S.picked > before || S.events.some(e => e.type === 'area')) { picks = S.picked; planFrame = -1e9; if (S.events.some(e => e.type === 'area')) log.push('area event at frame ' + S.frame + ' diam ' + S.diam.toFixed(1)); }
   if (S.frame % 150 === 0) { if (Math.hypot(S.pos[0] - lastPos[0], S.pos[2] - lastPos[2]) < 0.2 * K.radius(S)) stuckT++; else stuckT = 0; lastPos = S.pos.slice(); if (stuckT >= 4) { log.push('stuck at frame ' + S.frame + ' pos ' + S.pos.map(v => v.toFixed(1)) + ' diam ' + S.diam.toFixed(2) + ' target ' + (plan.target && plan.target.n)); plan = null; stuckT = 0; for (let i = 0; i < 40; i++) K.step(S, { fwd: -1, turn: 0.5 }); } }

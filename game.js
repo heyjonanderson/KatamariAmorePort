@@ -83,14 +83,14 @@ async function getBuf(url, task, units) {   // units = how much of the progress 
 }
 async function loadGroup(stage, tag, task) {
   task = task || NOLOAD; const base = `data/${stage}/`;
-  task.grow(5); const man = await (await fetch(`${base}${tag}.json?v=9`)).json(); task.step(1);
-  const blob = await getBuf(`${base}${tag}.bin?v=9`, task, 4);
+  task.grow(5); const man = await (await fetch(`${base}${tag}.json?v=13`)).json(); task.step(1);
+  const blob = await getBuf(`${base}${tag}.bin?v=13`, task, 4);
   const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const texs = {};
   task.grow(man.tex.length); await Promise.all(man.tex.map(async n => { texs[n] = makeTex(await loadImage(`${base}tex/${n}.png`)); task.step(1); }));
   const mods = {}; for (const m of man.models) mods[m.name] = m;
-  return { man, vbo, ibo, texs, mods };
+  return { man, vbo, ibo, texs, mods, blob: tag === 'core' ? blob : null };
 }
 
 // ---- the ball: generated UV sphere, procedural texture (PLACEHOLDER B9) ----
@@ -107,15 +107,27 @@ function makeBall() {
   g.fillStyle = '#2f8ea3'; g.fillRect(0, 0, 128, 128);
   for (let k = 0; k < 14; k++) { g.fillStyle = k % 2 ? '#4fb0c2' : '#216f82'; g.fillRect(Math.random() * 128, Math.random() * 128, 18 + Math.random() * 30, 8 + Math.random() * 18); }
   g.fillStyle = '#9fe0ea'; for (let k = 0; k < 4; k++) g.fillRect(k * 32, 0, 5, 128);
-  return { vbo, ibo, n: idx.length, tex: makeTex(c), data, mult: new Float32Array(data.length / 8).fill(1), dirty: false };
+  const nvv = data.length / 8, base = new Float32Array(nvv * 3), dir = new Float32Array(nvv * 3);
+  for (let i = 0; i < nvv; i++) for (let k = 0; k < 3; k++) { base[i * 3 + k] = data[i * 8 + k]; dir[i * 3 + k] = data[i * 8 + k]; }
+  return { vbo, ibo, n: idx.length, tex: makeTex(c), data, base, dir, mult: new Float32Array(nvv).fill(1), dirty: false };
+}
+// the real core mesh from GAMEDATA (GiCorM01..21 with GiCorT01..21, one per stage): a faceted ball with a pattern per stage. Scaled so its mean radius is 1 (A69)
+function makeBallCore(cg, no) {
+  const m = cg.mods['GiCorM' + String(no).padStart(2, '0')] || cg.mods.GiCorM01, sub = m.subs[0], nv = m.nv;
+  const data = new Float32Array(cg.blob.slice(m.voff, m.voff + nv * 32)), base = new Float32Array(nv * 3), dir = new Float32Array(nv * 3);
+  let rs = 0; for (let i = 0; i < nv; i++) rs += Math.hypot(data[i * 8], data[i * 8 + 1], data[i * 8 + 2]); const rm = rs / nv;
+  for (let i = 0; i < nv; i++) { const o = i * 8, x = data[o] / rm, y = data[o + 1] / rm, z = data[o + 2] / rm, l = Math.hypot(x, y, z) || 1; data[o] = base[i * 3] = x; data[o + 1] = base[i * 3 + 1] = y; data[o + 2] = base[i * 3 + 2] = z; dir[i * 3] = x / l; dir[i * 3 + 1] = y / l; dir[i * 3 + 2] = z / l; }
+  const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+  const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cg.blob.slice(sub.off, sub.off + sub.n * 2)), gl.STATIC_DRAW);
+  return { vbo, ibo, n: sub.n, tex: cg.texs[sub.tex], data, base, dir, mult: new Float32Array(nv).fill(1), dirty: true };
 }
 
 // ---- state ----
 let play = null, og = null, mg = null, ou = null, ball = null, S = null;
 const cam = { yaw: 0, ready: false, k: 0.2, back: 20, up: 8, ahead: 8, lookUp: 0 };
 const keys = {};
-const pads = { L: null, R: null };           // touch sticks: {id, ox, oy, v}
-let touchDash = false;
+const pads = { S: null };                    // touch stick: {id, ox, oy, x, y}. One floating stick on the left, like the original (A70)
+let touchDash = false, touchFlip = false, lastPick = null;
 let last_dt = 0.016, acc = 0, last = 0, prevPos = [0,0,0], prevYaw = 0, lost = false, ouji = { pat: 0, t: 0 };
 const UI = {};                                // HUD images
 
@@ -126,7 +138,7 @@ const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
@@ -138,12 +150,16 @@ function restart() {
 // ---- input ----
 // Keyboard (easy mode): forward/back and left/right are mixed into two stick values. Touch: drag on the left half = left stick, right half = right stick.
 function readInput() {
-  const dash = !!(keys.ShiftLeft || keys.ShiftRight || keys.Space || touchDash);
-  if (pads.L || pads.R) return { L: pads.L ? pads.L.v : 0, R: pads.R ? pads.R.v : 0, dash };
+  const dash = !!(keys.ShiftLeft || keys.ShiftRight || keys.Space || touchDash), flip = !!(keys.KeyQ || keys.KeyE || touchFlip);
+  const p = pads.S;
+  if (p) {   // one stick: up = forward, sideways = steer, mixed into the two track values the sim wants (same mix as the keyboard)
+    let x = (p.x - p.ox) / PAD_R, y = -(p.y - p.oy) / PAD_R; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+    const t = KSim.tank(y, -x * (Math.abs(y) > 0.2 ? 0.5 : 1)); return { L: t.L, R: t.R, dash, flip, P: Math.abs(y) > 0.2 ? Math.min(1, Math.abs(y) / 0.85) : undefined };   // P: push strength for the speed curve, kept apart from steering (A75)
+  }
   const fwd = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0);
   const left = (keys.ArrowLeft || keys.KeyA ? 1 : 0) - (keys.ArrowRight || keys.KeyD ? 1 : 0);
   const t = KSim.tank(fwd, left * (fwd ? 0.5 : 1));     // while driving, steer gently; standing still, spin
-  return { L: t.L, R: t.R, dash };
+  return { L: t.L, R: t.R, dash, flip, P: fwd ? 1 : undefined };
 }
 window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') restartUI(); if (e.code === 'Escape' || e.code === 'KeyP') setPause(!paused); if (e.code === 'KeyM') { KSnd.setMuted(!KSnd.isMuted()); syncSnd(); } if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -151,13 +167,14 @@ const bSnd = document.getElementById('bSnd'); const syncSnd = () => { bSnd.textC
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 const PAD_R = 70;
 canvas.addEventListener('pointerdown', e => {
-  const side = e.clientX < window.innerWidth / 2 ? 'L' : 'R'; if (pads[side]) return;
-  pads[side] = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY, v: 0 }; canvas.setPointerCapture(e.pointerId); G.touched = true;
+  if (e.clientX > window.innerWidth * 0.62 || pads.S) return;
+  pads.S = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); G.touched = true;
 });
-canvas.addEventListener('pointermove', e => { for (const k of ['L', 'R']) { const p = pads[k]; if (p && p.id === e.pointerId) { p.x = e.clientX; p.y = e.clientY; p.v = Math.max(-1, Math.min(1, -(e.clientY - p.oy) / PAD_R)); } } });
-const endPad = e => { for (const k of ['L', 'R']) if (pads[k] && pads[k].id === e.pointerId) pads[k] = null; };
+canvas.addEventListener('pointermove', e => { const p = pads.S; if (p && p.id === e.pointerId) { p.x = e.clientX; p.y = e.clientY; } });
+const endPad = e => { if (pads.S && pads.S.id === e.pointerId) pads.S = null; };
 canvas.addEventListener('pointerup', endPad); canvas.addEventListener('pointercancel', endPad);
 $('bRestart').onclick = restartUI; $('bAgain').onclick = restartUI;
+$('bTurn').addEventListener('pointerdown', e => { touchFlip = true; e.stopPropagation(); }); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('bTurn').addEventListener(ev, () => { touchFlip = false; });
 $('bDash').addEventListener('pointerdown', e => { touchDash = true; e.stopPropagation(); }); $('bDash').addEventListener('pointerup', () => { touchDash = false; }); $('bDash').addEventListener('pointercancel', () => { touchDash = false; });
 
 // ---- drawing ----
@@ -175,13 +192,25 @@ function objMat(R3, t) { return M.fromR3(R3, t, 1); }
 // ---- lumps (A60, A64): the shape comes from the sim (S.lumps); here the mesh follows it ----
 let pulse = 0;
 function shapeBall(R) {
-  const D = ball.data, M_ = ball.mult, lm = S.lumps; let changed = false;
+  const D = ball.data, M_ = ball.mult, B = ball.base, U = ball.dir, lm = S.lumps; let changed = false;
   for (let i = 0, n = M_.length; i < n; i++) {
-    const o = i * 8, t = lm.length ? KSim.lumpMult(lm, [D[o + 3], D[o + 4], D[o + 5]]) : 1;   // normal slots still hold the unit direction
+    const o = i * 8, j = i * 3, t = lm.length ? KSim.lumpMult(lm, [U[j], U[j + 1], U[j + 2]]) : 1;
     const c = M_[i] + (t - M_[i]) * 0.25; if (Math.abs(c - M_[i]) > 1e-4) { M_[i] = c; changed = true; } else M_[i] = t;
-    D[o] = D[o + 3] * M_[i]; D[o + 1] = D[o + 4] * M_[i]; D[o + 2] = D[o + 5] * M_[i];
+    D[o] = B[j] * M_[i]; D[o + 1] = B[j + 1] * M_[i]; D[o + 2] = B[j + 2] * M_[i];
   }
   if (changed || ball.dirty) { gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bufferSubData(gl.ARRAY_BUFFER, 0, D); ball.dirty = changed; }
+}
+const iconCv = document.createElement('canvas'); iconCv.width = iconCv.height = 128; const iconCx = iconCv.getContext('2d');
+function drawIcon(now) {   // renders lastPick's model into the bottom left 128 px of the canvas, copies it into iconCv, and the scene is cleared and drawn over it
+  if (!lastPick || !og || canvas.width < 128 || canvas.height < 128) return; const i = lastPick.info, m = og.mods[i.model]; if (!m) return;
+  gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 128, 128); gl.viewport(0, 0, 128, 128); gl.clearColor(0.6, 0.6, 0.6, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  const c = [0, 1, 2].map(k => (i.lo[k] + i.hi[k]) / 2), r = 0.5 * Math.hypot(i.hi[0] - i.lo[0], i.hi[1] - i.lo[1], i.hi[2] - i.lo[2]) || 1, a = now / 1000 * 1.4, ca = Math.cos(a), sa = Math.sin(a);
+  const Rs = [ca, 0, sa, 0, 1, 0, -sa, 0, ca], t = [-(Rs[0] * c[0] + Rs[1] * c[1] + Rs[2] * c[2]), -(Rs[3] * c[0] + Rs[4] * c[1] + Rs[5] * c[2]), -(Rs[6] * c[0] + Rs[7] * c[1] + Rs[8] * c[2])];
+  const vp = M.mul(M.persp(0.5, 1, r * 0.2, r * 10), M.look([0, r * 1.3, r * 3.4], [0, 0, 0], [0, 1, 0]));
+  gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv); bindGroup(og); drawModel(og, m, M.fromR3(Rs, t, 1));
+  iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
+  gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
 function draw(alpha) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -189,6 +218,7 @@ function draw(alpha) {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   gl.viewport(0, 0, w, h); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
   if (!G.ready || !S) return;
+  drawIcon(performance.now());
   G.tris = 0;
   const R = KSim.radius(S);
   const pos = [0,1,2].map(k => prevPos[k] + (S.pos[k] - prevPos[k]) * alpha);
@@ -251,7 +281,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png' };
+const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -268,7 +298,11 @@ function drawNum(str, x, y, hgt, sheet) {   // draws with the big digits, c/m sc
   }
   return cx - x;
 }
-function fmtDiam(cm) { return cm < 100 ? Math.floor(cm) + 'cm' : (cm / 100).toFixed(1) + 'm'; }
+function fmtDiamHud(cm) {   // as the original shows it: 6cm4mm, 1m24cm1mm
+  const t = Math.floor(cm * 10 + 1e-6), m = Math.floor(t / 1000), c = Math.floor((t % 1000) / 10), mm = t % 10;
+  return m > 0 ? m + 'm' + String(c).padStart(2, '0') + 'cm' + mm + 'mm' : c > 0 ? c + 'cm' + mm + 'mm' : mm + 'mm';   // tester: 4.028632 m is 4m02cm8mm (A72)
+}
+function fmtDiam(cm) { return fmtDiamHud(cm); }
 function drawHud() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2), W = hudc.clientWidth, H = hudc.clientHeight;
   if (hudc.width !== Math.floor(W * dpr)) { hudc.width = Math.floor(W * dpr); hudc.height = Math.floor(H * dpr); }
@@ -280,22 +314,40 @@ function drawHud() {
   if (UI.SIZEB) hx.drawImage(UI.SIZEB, 0, 0, gs, gs);
   if (UI.SIZEF) { hx.save(); hx.beginPath(); hx.moveTo(0, 0); hx.arc(0, 0, gs * (0.12 + 0.9 * prog), 0, Math.PI / 2); hx.closePath(); hx.clip(); hx.drawImage(UI.SIZEF, 0, 0, gs, gs); hx.restore(); }
   // size number
-  const nh = gs * 0.26; hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiam(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore();
+  const nh = gs * 0.26; hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiamHud(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore();
   // goal marker text
   hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : MODE === 'exact' ? 'make it ' + fmtDiam(S.goal) : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
-  // timer: pie of remaining time, number inside
-  const inf = !isFinite(S.timeLimit), left = inf ? S.frame / KSim.FPS : Math.max(0, S.timeLimit - S.frame / KSim.FPS), ts = Math.max(64, Math.min(96, Math.min(W, H) * 0.16)), tx = W - ts - 12, ty = 12;
-  if (UI.TIMER) hx.drawImage(UI.TIMER, tx, ty, ts, ts);
-  hx.beginPath(); hx.moveTo(tx + ts / 2, ty + ts / 2); hx.arc(tx + ts / 2, ty + ts / 2, ts * 0.47, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (inf ? 0.999 : left / S.timeLimit)); hx.closePath(); hx.fillStyle = !inf && left < 30 ? '#ff5a5a' : '#ffb0b8'; hx.fill();
-  hx.beginPath(); hx.arc(tx + ts / 2, ty + ts / 2, ts * 0.22, 0, Math.PI * 2); hx.fillStyle = '#5a5a5a'; hx.fill();
-  const mm = Math.floor(left / 60), ss = Math.floor(left % 60); const tstr = mm + ':' + String(ss).padStart(2, '0');
-  hx.fillStyle = '#fff'; hx.font = `bold ${Math.round(ts * 0.22)}px system-ui, sans-serif`; hx.textAlign = 'center'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText(tstr, tx + ts / 2, ty + ts + 16); hx.textAlign = 'left'; hx.shadowBlur = 0;
+  // timer, as in the original: minutes left in white beside a clock whose needle sweeps once a minute. The last minute turns red and counts seconds (A70)
+  const inf = !isFinite(S.timeLimit), el = S.frame / KSim.FPS, left = inf ? el : Math.max(0, S.timeLimit - el), ts = Math.max(64, Math.min(96, Math.min(W, H) * 0.16)), tx = W - ts - 12, ty = 12;
+  const lastMin = !inf && left < 60, face = lastMin ? UI.TIMERH : UI.TIMER;
+  if (face) hx.drawImage(face, tx, ty, ts, ts);
+  { const cx = tx + ts / 2, cy = ty + ts / 2, a = (el % 60) / 60 * Math.PI * 2, len = ts * 0.4, sx = Math.sin(a), sy = -Math.cos(a), px = -sy, py = sx, bw = ts * 0.045;
+    hx.beginPath(); hx.moveTo(cx + sx * len, cy + sy * len); hx.lineTo(cx + px * bw, cy + py * bw); hx.lineTo(cx - px * bw, cy - py * bw); hx.closePath(); hx.fillStyle = '#fff'; hx.fill();
+    hx.beginPath(); hx.arc(cx, cy, ts * 0.06, 0, Math.PI * 2); hx.fillStyle = '#fff'; hx.fill(); }
+  { const n = lastMin ? Math.ceil(left) : Math.floor(left / 60), str = String(Math.min(99, n)).padStart(2, '0'), sh = lastMin ? 'NUMO' : 'NUMW', nh2 = ts * 0.46;
+    hx.save(); hx.globalAlpha = 0; const w = drawNum(str, 0, 0, nh2, sh); hx.restore();
+    hx.save(); hx.shadowColor = '#0008'; hx.shadowBlur = 3; drawNum(str, tx - w - 8, ty + ts * 0.08, nh2, sh); hx.restore(); }
   // dash meter (placeholder look)
-  if (S.dashCool > 0 || S.dashT > 0) { const f = S.dashCool > 0 ? 1 - S.dashCool / 240 : 1 - S.dashT / 240; hx.fillStyle = '#0006'; hx.fillRect(tx, ty + ts + 24, ts, 6); hx.fillStyle = S.dashCool > 0 ? '#888' : '#ffd24a'; hx.fillRect(tx, ty + ts + 24, ts * f, 6); }
-  // touch sticks
-  for (const k of ['L', 'R']) { const p = pads[k]; if (!p) continue; const ps = 128;
-    if (UI.PAD) hx.drawImage(UI.PAD, p.ox - ps / 2, p.oy - ps / 2, ps, ps);
-    const dy = Math.max(-PAD_R, Math.min(PAD_R, p.y - p.oy)) * 0.6; if (UI.PADC) hx.drawImage(UI.PADC, p.ox - 32, p.oy + dy - 32, 64, 64); }
+  if (S.dashCool > 0 || S.dashT > 0) { const f = S.dashCool > 0 ? 1 - S.dashCool / 240 : 1 - S.dashT / 240; hx.fillStyle = '#0006'; hx.fillRect(tx, ty + ts + 4, ts, 5); hx.fillStyle = S.dashCool > 0 ? '#888' : '#ffd24a'; hx.fillRect(tx, ty + ts + 4, ts * f, 5); }
+  // last thing picked up: round tag with the object drawn in it and its name under it (the icon is the real model, drawn in draw() into iconCv)
+  if (lastPick && UI.MONO) {
+    const ms = ts * 0.98, mx = W - ms - 14, my = ty + ts + 16, r = ms * 0.36;
+    hx.drawImage(UI.MONO, mx, my, ms, ms);
+    hx.save(); hx.beginPath(); hx.arc(mx + ms / 2, my + ms / 2, r, 0, Math.PI * 2); hx.clip(); hx.drawImage(iconCv, mx + ms / 2 - r, my + ms / 2 - r, r * 2, r * 2); hx.restore();
+    hx.save(); hx.font = `bold ${Math.round(ms * 0.19)}px system-ui, sans-serif`; hx.textAlign = 'right'; hx.fillStyle = '#fff'; hx.shadowColor = '#000'; hx.shadowBlur = 4; hx.fillText(lastPick.label, W - 8, my + ms + ms * 0.2); hx.restore();
+  }
+  // prince in the bottom right corner over the earth, like the original (GiOUJI frames: walk cycle, leaning when dashing)
+  if (UI.EARTH && UI.OUJI) {
+    const es = Math.max(120, Math.min(260, H * 0.3)); hx.drawImage(UI.EARTH, 32, 26, 126, 132, W - es * 126 / 132, H - es, es * 126 / 132, es);   // the picture's own edges sit on the screen corner
+    const moving = S.speed > 0.05 && (Math.abs(S.input && S.input.L || 0) > 0.2 || Math.abs(S.input && S.input.R || 0) > 0.2), fr = S.dash ? (S.frame >> 2 & 1 ? 7 : 11) : moving ? [0, 1, 2, 3][ouji.pat % 4] : 0, ph = es * 0.66;
+    const OX = [[24, 146, 268, 390], [20, 144, 267, 386], [22, 143, 265, 382]], OY = [12, 174, 335], rw = ph * 96 / 152;   // frame rectangles measured from the sheet
+    hx.drawImage(UI.OUJI, OX[fr >> 2][fr & 3], OY[fr >> 2], 96, 152, W - rw - es * 0.04, H - ph - es * 0.02, rw, ph);
+  }
+  // touch stick: drawn where it is held, and parked at the lower left on touch screens while idle
+  { const p = pads.S, coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches; if (p || coarse) { const ps = 150, bx = p ? p.ox : ps * 0.75 + 14, by = p ? p.oy : H - ps * 0.75 - 18;
+    hx.save(); hx.globalAlpha = p ? 0.9 : 0.5; if (UI.PAD) hx.drawImage(UI.PAD, bx - ps / 2, by - ps / 2, ps, ps);
+    let kx = 0, ky = 0; if (p) { kx = p.x - p.ox; ky = p.y - p.oy; const m = Math.hypot(kx, ky); if (m > PAD_R) { kx *= PAD_R / m; ky *= PAD_R / m; } kx *= 0.6; ky *= 0.6; }
+    if (UI.PADC) hx.drawImage(UI.PADC, bx + kx - 32, by + ky - 32, 64, 64); hx.restore(); } }
 }
 let toast = null, resShown = false, dlgRes = null;
 
@@ -391,6 +443,7 @@ function frame(now) {
     KSim.step(S, over ? { L: 0, R: 0 } : inp);
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') { const i = S.info[ev.name], c = i && i.cat; if (c !== undefined) KSnd.se('KD2_SE_mono_' + String(c).padStart(2, '0')); }
+      if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
       if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) activeCatch = { se: CATCH_SE_MAP[cs[2]] !== undefined ? CATCH_SE_MAP[cs[2]] : 20, every: cs[4] || 300, next: S.frame }; }   // A53
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
@@ -415,8 +468,9 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=9`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
-    mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task); ball = makeBall();
+    play = await (await fetch(`data/${STAGE}/play.json?v=16`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
+    try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }
     task.grow(Object.keys(IMGS).length); await loadUI(task);
     task.label('Setting up the stage'); task.grow(3); await new Promise(r => setTimeout(r, 30)); task.step(1);   // let the bar paint before the blocking part

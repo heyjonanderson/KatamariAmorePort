@@ -1,10 +1,11 @@
 import glob, os, sys, json, struct, shutil, re, collections
-sys.path.insert(0, os.path.expanduser('~/work/tools'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dat, mdl
 import numpy as np
-SRC = os.path.expanduser('~/work/k/Payload/katamari2.app')
-TEX = os.path.expanduser('~/work/out/tex')
-OUT = os.path.expanduser('~/work/web/data')
+# Usage: export.py APP_FOLDER OUT_DATA_DIR TEX_DIR   (TEX_DIR is what dump_tex.py wrote)
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/work/k/Payload/katamari2.app')
+OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/work/web/data')
+TEX = sys.argv[3] if len(sys.argv) > 3 else os.path.expanduser('~/work/out/tex')
 
 def models_of(fn):
     d, base, ents, _ = dat.parse(os.path.join(SRC, fn))

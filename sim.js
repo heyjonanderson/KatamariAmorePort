@@ -7,9 +7,13 @@
   // Two-stick control constants, read from KatamariData.cppi (gf32DefaultOujiParam) and OujiCtrl4.cppi
   const TILT = 0.2, TURNDELTA = 0.035, TURNDELTA2 = 0.055, TURNDELTA3 = 0.025, MOVEDELTA = 0.06, MOVEDELTA_B = 0.03;
   const DASH_DURATION = 240, DASH_FORBID = 240;   // frames, from the same table
-  const DRAG = 0.03;                 // PLACEHOLDER (P3): per-frame velocity loss. KPARAM(f32Registance) is not in the bundle
+  // KPARAM, read out of the binary (tools/kparam.json, ASSUMPTIONS A71). Only the ones the sim uses are here
+  const KP = { registance: 0.0352, moveTurnRegist: 0.1234, getRatio: 0.1, crumbleRatio: 0.03, crumbleDepth: 5, crumbleAngle: 0.28, crumbleSpeedRatio: 0.98, convergeRatio: 0.015, halfSpeed: 0.4, tilt1: 0.29, tilt2: 0.99, brakeSpeedRatio: 0.45 };
+  const BRAKE_COS = Math.cos(0.334 * Math.PI / 2);   // KPARAM f32BrakeAngle 0.334 * 90 degrees
+  const DRAG = KP.registance;        // A71: drag per frame as a fraction of velocity (the engine subtracts v * Registance along the motion)
+  // MonoHit.cppi gYm_MonoHitSetInfo: catch diameter (mm) from box volume * volume ratio / GetRatio, as a sphere
+  const engineCatchMm = i => Math.floor(2000 * Math.cbrt(3 * i.boxvol * i.vol_ratio / KP.getRatio / (4 * Math.PI)));
   const CLIMB = 0.75;                // PLACEHOLDER (P19): the ball rolls up onto too-big objects whose top is at most CLIMB * radius above its bottom
-  const MIN_POWER_SPEED = 0.4;       // PLACEHOLDER (P4): max speed at the lightest stick push, fraction. SpeedTiltSect/HalfSpeedRatio not in the bundle
   let GRID = 40;                                                  // set per stage in create: big stages (the ball starts at metres) need bigger cells
 
   // ---- small math ----
@@ -141,14 +145,14 @@
     opts = opts || {};
     const mf = play.mis.mission_floats;
     GRID = Math.max(40, (opts.startDiam || mf[8]) * 1.5);
-    const startDiam = opts.startDiam || mf[8], tgtInfo = !opts.noTarget && play.mis.target && play.info[play.mis.target], cm = i => (opts.catchMode === 'goal' && i.catch_goal_mm !== undefined) ? i.catch_goal_mm : i.catch_mm, goal = opts.goal || (tgtInfo ? cm(tgtInfo) / 10 : mf[9]);   // story clear = pick up the target mono (GameClear.cppi sCheck1P_N); goal is its catch size, used for the HUD gauge
+    const startDiam = opts.startDiam || mf[8], tgtInfo = !opts.noTarget && play.mis.target && play.info[play.mis.target], cm = i => opts.catchMode === 'engine' ? engineCatchMm(i) : (opts.catchMode === 'goal' && i.catch_goal_mm !== undefined) ? i.catch_goal_mm : i.catch_mm, goal = opts.goal || (tgtInfo ? cm(tgtInfo) / 10 : mf[9]);   // story clear = pick up the target mono (GameClear.cppi sCheck1P_N); goal is its catch size, used for the HUD gauge
     const S = {
       G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, crumbleCool: 0, crumbled: 0, flipT: 0, flipLock: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     for (const o of play.objs) {
@@ -248,8 +252,8 @@
     if (bR && idleL) return { turn: TURNDELTA3 * ex(pr), power: 0, dir: 0 };           // sTurnSR
     if (fL && fR) return { turn: MOVEDELTA * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: 1 };
     if (bL && bR) return { turn: -MOVEDELTA_B * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: -1 };   // PLACEHOLDER: both back = reverse
-    if (fL && bR) return { turn: TURNDELTA2 * Math.min(1, ex((pl + pr) / 2) + 0.0), power: 0, dir: 0 };    // sTurn90: spin right
-    if (fR && bL) return { turn: -TURNDELTA2 * Math.min(1, ex((pl + pr) / 2)), power: 0, dir: 0 };
+    if (fL && bR) return { turn: TURNDELTA2 * Math.min(1, ex((pl + pr) / 2) + 0.0), power: 0, dir: 0, moveTurn: true };    // sTurn90: spin right
+    if (fR && bL) return { turn: -TURNDELTA2 * Math.min(1, ex((pl + pr) / 2)), power: 0, dir: 0, moveTurn: true };
     return { turn: 0, power: 0, dir: 0 };
   }
 
@@ -257,7 +261,7 @@
   // MonoIbitsu.cppi: the farthest IBITSU tip of each of the last N attached objects becomes a "fluid" distort point (up to 6). Katamari.sSetPosition-style code then puts the
   // surface at len = R + (tip - R) * spd_ratio, capped at 2.5 R: lumps are full size when the ball rolls at or below its normal top speed and melt away toward dash speed.
   // N (IbitsuCheckDepth) and the cone width (LUMP_SHARP) are guesses; the rest follows the source.
-  const FLIP_FRAMES = 14, FLIP_MIN = 0.3;
+  const FLIP_FRAMES = 14;
   const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_SHARP = 4, LUMP_CAP = 2.5, LUMP_LIFT_MAX = 0.25;   // the picture shows the full lump, the physics ball rises at most a quarter radius (A64)
   function lumpsOf(S, R) {
     const out = [], L = S.ibiList; if (!L || !L.length) return out;
@@ -277,8 +281,8 @@
   // input: {L, R, dash} (stick values -1..1), or {fwd, turn} which is converted with tank(). One call = one frame.
 
   // ---- crumble and converge (MonoCrumble.cppi, MonoConverge.cppi, KatamariHit sGetSpeedRatio / sGetReflectionRatio) (A65) ----
-  // The KPARAM values (CrumbleAngle, CrumbleSpeedRatio, CrumbleRatio, CrumbleDepth, CrumbleSpdRatio, IbitsuConvergeRatio) are not in the sources: GUESSED, kept mild
-  const CR = { angle: 0.3, spd: 0.5, vol: 0.1, depth: 10, fly: 1.0, pop: 0.35, cool: 15, hitOff: 10, conv: 0.02, convMin: 0.5, flyMax: 240 };
+  // The KPARAM values are read from the binary (A71). Speeds are relative to f32ScaleMaxSpeed = the table speed (not the dash speed)
+  const CR = { angle: KP.crumbleAngle, spd: KP.crumbleSpeedRatio, vol: KP.crumbleRatio, depth: KP.crumbleDepth, fly: 1.0, pop: 0.35, cool: 15, hitOff: 10, conv: KP.convergeRatio, convMin: 0.5, flyMax: 240 };   // angle, spd, vol, depth, conv are exact (A71); the rest is staging
   // speed power x angle power of one hit: ground type of sGetSpeedRatio ((v/vmax - 0.25) / 0.25) times (acos(move . wall) - 90 deg) / 90 deg
   function impactPower(vx, vz, nx, nz, vIn, vmax) {
     if (vIn < 1e-6) return 0; const inner = (vx * nx + vz * nz) / vIn; if (inner >= 0) return 0;
@@ -327,7 +331,7 @@
   // MonoConverge: a lump dragging on the ground pulls the objects near it in toward the centre, harder the faster the ball goes
   function converge(S, R, vmax) {
     if (!S.lumps.length || S.lift < 1e-3) return;
-    const ratio = 1 - Math.min(1, S.speed / vmax) * CR.conv; if (ratio >= 1) return;
+    const ratio = 1 - (S.speed / vmax) * CR.conv; if (ratio >= 1) return;
     const dn = mvec(mtr(S.R), [0, -1, 0]);
     for (const L of S.lumps) {
       if (L.n[0] * dn[0] + L.n[1] * dn[1] + L.n[2] * dn[2] < 0.6) continue;           // this lump is the one on the ground
@@ -339,20 +343,32 @@
     }
   }
 
+  // KatamariMain.cppi sControl: max speed ratio by how far the stick is pushed. Below Sect1 it ramps up to HalfSpeedRatio, up to Sect2 it stays there,
+  // above Sect2 the source formula (with its operator precedence, which the binary keeps) gives Half + (1 - Half * t): 1.4 at Sect2 falling to 1.0 at full tilt
+  function tiltFactor(p) {
+    if (p < KP.tilt1) return KP.halfSpeed * (p / KP.tilt1);
+    if (p < KP.tilt2) return KP.halfSpeed;
+    return KP.halfSpeed + (1 - KP.halfSpeed * ((p - KP.tilt2) / (1 - KP.tilt2)));
+  }
+
   function step(S, input) {
     S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
-    const inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash });
+    const inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
     // lumps lift the ball: the surface point that faces down decides how high the centre rides. Eased so it does not jitter (A64)
     S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
     const st = readSticks(inp.L, inp.R);
-    // quick turn (OSTAT Jump180): pulling both sticks back while rolling makes the prince hop over the ball to the other side and face the other way.
-    // The state exists in the sources but what sets it does not, so the trigger and timing are guessed (A66)
-    { const sp = Math.sin(S.yaw), cp = Math.cos(S.yaw);
-      if (S.flipT === 0 && !S.flipLock && st.dir === -1 && st.power >= 0.6 && S.v[0] * sp + S.v[1] * cp > FLIP_MIN * tp.speed) { S.flipT = FLIP_FRAMES; S.events.push({ type: 'flip' }); }
-      if (st.dir !== -1 && S.flipT === 0) S.flipLock = false;
-      if (S.flipT > 0) { S.yaw += Math.PI / FLIP_FRAMES; S.flipT--; if (S.flipT === 0) S.flipLock = true; } else S.yaw += st.turn; }
+    // The two-stick average power drops when you steer (one stick lower), which with the 0.4 plateau of the speed curve made steering crawl. The original's one-stick path (Ctrl4 combined stick) has no such drop, so single-stick and keyboard input pass their own push strength (A75)
+    if (inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
+    // quick turn (OSTAT Jump180): the original has a U-turn button at the bottom centre of the screen. Pressing it makes the prince hop over the ball and face the other way.
+    // Timing is guessed (A66)
+    if (inp.flip && !S.flipHeld && S.flipT === 0) { S.flipT = FLIP_FRAMES; S.events.push({ type: 'flip' }); }
+    S.flipHeld = !!inp.flip;
+    if (S.flipT > 0) { S.yaw += Math.PI / FLIP_FRAMES; S.flipT--; } else S.yaw += st.turn;
+    // OUJI_STAT_MOVETURN (OujiCtrl4 sTurn90 while the ball is moving): the velocity turns with the prince and drag drops to MoveTurnRegistRatio (A76)
+    const moveTurn = !!st.moveTurn && S.flipT === 0 && Math.hypot(S.v[0], S.v[1]) > 1e-3;
+    if (moveTurn) { const c = Math.cos(st.turn), n = Math.sin(st.turn), ox = S.v[0], oz = S.v[1]; S.v[0] = ox * c + oz * n; S.v[1] = oz * c - ox * n; }
     S.input = { L: inp.L, R: inp.R, turn: st.turn, power: st.power };
     // dash: up to DASH_DURATION frames, then DASH_FORBID frames of cooldown (PLACEHOLDER: the real dash is a swipe gesture, see P11)
     if (S.dashCool > 0) S.dashCool--;
@@ -361,24 +377,31 @@
     S.dash = wantDash && S.dashCool === 0;
     // acceleration along the facing direction, capped at the table speed (sControl)
     const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
-    let acc = 0, ratio = 0, dir = (S.flipT > 0 || (S.flipLock && st.dir === -1)) ? 0 : st.dir, power = st.power;
+    let acc = 0, ratio = 0, dir = S.flipT > 0 ? 0 : st.dir, power = st.power;
     if (S.dash) { power = 1; acc = tp.accD; ratio = tp.rD; }
-    else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * (MIN_POWER_SPEED + (1 - MIN_POWER_SPEED) * power); }
-    else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * (MIN_POWER_SPEED + (1 - MIN_POWER_SPEED) * power); }
+    else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * tiltFactor(power); }
+    else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
     const fmax = tp.speed * ratio;
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
     if (dir !== 0) {
       let ix = fx * dir, iz = fz * dir;
-      // pushing against the motion brakes instead of accelerating (sCheckBreakInput, simplified)
-      if (oldMag > 0.05 && (ix * vx + iz * vz) / oldMag < -0.3) { const b = (dir === 1 ? tp.brakeF : tp.brakeB) * power; vx -= vx / oldMag * Math.min(b, oldMag); vz -= vz / oldMag * Math.min(b, oldMag); }
+      // sCheckBreakInput: the input has to point within BrakeAngle (30 degrees) of straight against the motion. A brake starts only above BrakeSpeedRatio (45%)
+      // of the max speed for the direction the ball is travelling relative to the prince (front, back or side), and then holds until the input stops opposing
+      let braking = false;
+      if (oldMag > 1e-4 && (ix * -vx + iz * -vz) / oldMag >= BRAKE_COS) {
+        const along = (fx * vx + fz * vz) / oldMag, mspd = tp.speed * (along > 0.7 ? (S.dash ? tp.rD : tp.rF) : along < -0.7 ? tp.rB : tp.rS);
+        braking = S.brake || oldMag >= KP.brakeSpeedRatio * mspd;
+      }
+      S.brake = braking;
+      if (braking) { const b = (dir === 1 ? tp.brakeF : tp.brakeB) * power; vx -= vx / oldMag * Math.min(b, oldMag); vz -= vz / oldMag * Math.min(b, oldMag); }
       else {
         vx += ix * acc; vz += iz * acc; const nm = Math.hypot(vx, vz);
         if (nm > fmax && nm > oldMag) { const keep = oldMag < fmax ? fmax : oldMag; vx = vx / nm * keep; vz = vz / nm * keep; }   // same overshoot rule as the engine
       }
     }
-    vx *= 1 - DRAG; vz *= 1 - DRAG;
+    { const dr = moveTurn ? DRAG * KP.moveTurnRegist : DRAG; vx *= 1 - dr; vz *= 1 - dr; }
     if (Math.hypot(vx, vz) < 1e-3) { vx = 0; vz = 0; }
-    const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed * tp.rD; let hitPow = 0;   // incoming velocity, for crumble
+    const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed; let hitPow = 0;   // incoming velocity, for crumble
     const bottom = S.pos[1] - R;
     const ok = (x, z) => supportAt(S, x, z, bottom + stepUp, bottom + climb) !== null;
     let dx = vx, dz = vz, moved = 0, mx = 0, mz = 0;

@@ -1,7 +1,8 @@
 import glob, os, sys, json, re
-sys.path.insert(0, os.path.expanduser('~/work/tools'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dat, tables as T
-SRC = os.path.expanduser('~/work/k/Payload/katamari2.app'); OUT = os.path.expanduser('~/work/web/data')
+# Usage: export_stage.py APP_FOLDER OUT_DATA_DIR
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/work/k/Payload/katamari2.app'); OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/work/web/data')
 def chunk(d, base, ents, name):
     e = [e for e in ents if e[1] == name]
     return d[base+e[0][2]+4: base+e[0][2]+e[0][3]] if e else None

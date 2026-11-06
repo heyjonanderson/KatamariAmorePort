@@ -6,10 +6,10 @@ Work-in-progress browser port (WebGL, plain JS, no build step). Open `index.html
 - `game.html?stage=S001&mode=story` the game (`mode`: story, timeattack, eternal; `catch=goal` switches the catch-size rule)
 - `viewer.html` model/stage viewer
 - `sim.js` rules and physics, `game.js` rendering and HUD, `text.js` / `menu.js` UI, `audio.js` sound
-- `tools/` data export scripts (Python), `tests/` bot and smoke tests (Node)
+- `tools/` data export scripts (Python; `python3 tools/build_all.py APP_FOLDER` rebuilds `data/` from a decrypted app folder, `tools/kparam.json` is the physics table read from the binary), `tests/` bot and smoke tests (Node)
 - `ASSUMPTIONS.md` every guess and placeholder, `SPEC.md` notes
 
-Local run: `python3 serve.py` (or `serve.bat`), then open the printed address. Controls: WASD or arrows, Shift or Space to dash, R restart, M mute; touch uses two drag sticks.
+Local run: `python3 serve.py` (or `serve.bat`), then open the printed address. Controls: WASD or arrows, Shift or Space to dash, Q or E to U-turn, R restart, M mute; touch uses one drag stick on the left and an orange U-turn button.
 
 ## For testers
 

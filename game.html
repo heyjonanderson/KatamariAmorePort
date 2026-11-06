@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=9">
+<link rel="stylesheet" href="ui.css?v=16">
 <style>
   html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
   canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #hud { pointer-events: none; }
-  #bDash { position: fixed; right: 18px; bottom: 26px; width: 84px; height: 84px; border-radius: 50%; border: 3px solid #fff8; background: #ff7a2a99; color: #fff; font: bold 15px system-ui; display: none; touch-action: none; }
+  #bDash { position: fixed; right: 18px; bottom: calc(26% + 6px); width: 84px; height: 84px; border-radius: 50%; border: 3px solid #fff8; background: #ff7a2a99; color: #fff; font: bold 15px system-ui; display: none; touch-action: none; }
+  #bTurn { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: 132px; height: 62px; border-radius: 66px 66px 0 0; border: 0; background: #ff6422; opacity: .9; padding: 0 0 4px; display: flex; align-items: flex-start; justify-content: center; padding-top: 10px; touch-action: none; z-index: 3; }
   @media (pointer: coarse) { #bDash { display: block; } #help { display: none; } }
   #msg { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: #0007; font-size: 28px; }
   #msg button, #top button, #pause button { background: #ffd24a; color: #222; border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-size: 16px; }
@@ -25,8 +26,9 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="top"><select id="stage" style="display:none"></select><button id="bPause">Pause</button><button id="bRestart">Restart</button><button id="bSnd">Sound on</button><a href="menu.html"><button>Menu</button></a><a href="viewer.html"><button>Viewer</button></a></div>
-<div id="help">WASD / arrows: roll and steer &nbsp; Shift or Space: dash &nbsp; R: restart &nbsp; Esc or P: pause &nbsp; touch: drag on the left and right halves (two sticks)</div>
+<div id="help">WASD / arrows: roll and steer &nbsp; Shift or Space: dash &nbsp; Q or E (or the orange button): U-turn &nbsp; R: restart &nbsp; Esc or P: pause &nbsp; touch: drag on the left side to steer</div>
 <button id="bDash">DASH</button>
+<button id="bTurn" title="U-turn (Q or E)"><svg viewBox="0 0 48 32" width="48" height="32"><path d="M10 28V14a12 12 0 0 1 24 0v6" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 17l10 12 10-12z" fill="#fff"/></svg></button>
 <div id="res" style="position:fixed;inset:0;display:none;background:#000a"><div class="kbox" id="rbox" style="background:none"><div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/KING/KinSKING.png)"></div><div class="dlg" id="rDlg"><div class="t"></div><div class="n">&#9660;</div></div><div class="small" id="rRetry" style="left:12px;top:10px;display:none">Retry</div><div class="small" id="rMenu" style="right:12px;top:10px;display:none">Stage select</div></div></div>
 <div id="pause" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:#000b;z-index:5">
   <div style="font-size:26px">Paused</div>
@@ -36,10 +38,10 @@
 </div>
 <div id="msg"><div id="msgt"></div><button id="bAgain">Play again</button></div>
 <div id="load"></div>
-<script src="load.js?v=9"></script>
-<script src="audio.js?v=9"></script>
-<script src="text.js?v=9"></script>
-<script src="sim.js?v=9"></script>
-<script src="game.js?v=9"></script>
+<script src="load.js?v=16"></script>
+<script src="audio.js?v=16"></script>
+<script src="text.js?v=16"></script>
+<script src="sim.js?v=16"></script>
+<script src="game.js?v=16"></script>
 </body>
 </html>

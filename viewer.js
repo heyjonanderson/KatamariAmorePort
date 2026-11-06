@@ -57,8 +57,8 @@ const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
 async function loadGroup(stage, tag) {
   const base = `data/${stage}/`;
-  const man = await (await fetch(`${base}${tag}.json?v=9`)).json();
-  const blob = await (await fetch(`${base}${tag}.bin?v=9`)).arrayBuffer();
+  const man = await (await fetch(`${base}${tag}.json?v=13`)).json();
+  const blob = await (await fetch(`${base}${tag}.bin?v=13`)).arrayBuffer();
   const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, blob, gl.STATIC_DRAW);
   const texs = {};
@@ -137,7 +137,7 @@ async function setScene(stage, mode) {
   S.ready = false; S.stage = stage; S.mode = mode;
   $('info').textContent = 'loading ' + stage + ' ' + mode + '...';
   try {
-    const sj = await (await fetch(`data/${stage}/stage.json?v=9`)).json(); S.sj = sj;
+    const sj = await (await fetch(`data/${stage}/stage.json?v=13`)).json(); S.sj = sj;
     const letters = [...new Set(Object.keys(sj.mloc).map(k => k[3]))];
     const sel = $('set'); if (sel.dataset.stage !== stage) { sel.innerHTML = ''; for (const l of letters) { const o = document.createElement('option'); o.value = o.textContent = l; sel.appendChild(o); } sel.dataset.stage = stage; if (!letters.includes(S.set)) S.set = letters[0]; }
     sel.value = S.set; sel.style.display = mode === 'stage' ? '' : 'none';
@@ -211,7 +211,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---- UI ----
 (async () => {
-  const stages = await (await fetch('data/stages.json?v=9')).json();
+  const stages = await (await fetch('data/stages.json?v=13')).json();
   const sel = $('stage'); for (const s of stages) { const o = document.createElement('option'); o.value = o.textContent = s; sel.appendChild(o); }
   sel.value = S.stage;
   sel.onchange = () => setScene(sel.value, S.mode);

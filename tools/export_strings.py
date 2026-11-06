@@ -1,9 +1,10 @@
-# Writes data/strings_en.json from English.lproj/STRING.dat: {names: [[name, first string index]], strings: [...]}.
+# Writes data/strings_<code>.json from <Language>.lproj/STRING.dat: {names: [[name, first string index]], strings: [...]}.
+# Usage: export_strings.py IPA_APP_FOLDER OUT.json [Language, default English]
 import sys, os, struct, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dat
-SRC = sys.argv[1]; OUT = sys.argv[2]
-d, b, e, _ = dat.parse(f'{SRC}/English.lproj/STRING.dat'); x = e[0]; c = d[b+x[2]+4: b+x[2]+x[3]]
+SRC = sys.argv[1]; OUT = sys.argv[2]; LANG = sys.argv[3] if len(sys.argv) > 3 else 'English'
+d, b, e, _ = dat.parse(f'{SRC}/{LANG}.lproj/STRING.dat'); x = e[0]; c = d[b+x[2]+4: b+x[2]+x[3]]
 n = struct.unpack('>I', c[:4])[0]; ent = [(c[4+i*20: 20+i*20].decode('latin1').strip(), struct.unpack('>I', c[20+i*20: 24+i*20])[0]) for i in range(n)]
 p = 4 + n * 20; cnt = struct.unpack('>I', c[p:p+4])[0]; pool = p + 4 + cnt * 8; S = []
 for k in range(cnt):
