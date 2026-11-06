@@ -283,7 +283,7 @@
 
   // ---- crumble and converge (MonoCrumble.cppi, MonoConverge.cppi, KatamariHit sGetSpeedRatio / sGetReflectionRatio) (A65) ----
   // The KPARAM values are read from the binary (A71). Speeds are relative to f32ScaleMaxSpeed = the table speed (not the dash speed)
-  const CR = { angle: KP.crumbleAngle, spd: KP.crumbleSpeedRatio, vol: KP.crumbleRatio, depth: KP.crumbleDepth, fly: 1.0, pop: 0.35, cool: 15, hitOff: 10, conv: KP.convergeRatio, convMin: 0.5, flyMax: 240 };   // angle, spd, vol, depth, conv are exact (A71); the rest is staging
+  const CR = { angle: KP.crumbleAngle, spd: KP.crumbleSpeedRatio, vol: KP.crumbleRatio, depth: KP.crumbleDepth, cosA: Math.cos(75 * Math.PI / 180), sinA: Math.sin(75 * Math.PI / 180), cool: 15, hitOff: 10, conv: KP.convergeRatio, convMin: 0.5, flyMax: 240 };   // angle, spd, vol, depth, conv are exact (A71); the rest is staging
   // speed power x angle power of one hit: ground type of sGetSpeedRatio ((v/vmax - 0.25) / 0.25) times (acos(move . wall) - 90 deg) / 90 deg
   function impactPower(vx, vz, nx, nz, vIn, vmax) {
     if (vIn < 1e-6) return 0; const inner = (vx * nx + vz * nz) / vIn; if (inner >= 0) return 0;
@@ -312,9 +312,9 @@
     const wp = mvec(S.R, o.lpos), wr = mmul(S.R, o.lrot);
     o.pos = [S.pos[0] + wp[0], S.pos[1] + wp[1], S.pos[2] + wp[2]]; o.rot = wr; o.ppos = null;
     grow(S, -Math.min(o.addVol, S.volume * 0.5)); S.picked--;
-    const h = Math.hypot(wp[0], wp[2]) || 1, tp = tableParams(S), spd = tp.speed * tp.rF * (0.6 + 0.4 * power) * CR.fly;
-    o.vel = [wp[0] / h * spd, spd * CR.pop, wp[2] / h * spd];
-    o.spin = { ax: norm([wp[2], 0, -wp[0]]), w: 0.15 + 0.25 * power };
+    const h = Math.hypot(wp[0], wp[2]) || 1, tp = tableParams(S), spd = tp.speed * tp.rF * (0.6 + 0.4 * power) * KP.crumbleSpeedRatio;   // sGetCrumbleVector: _R_BASE 0.6 + _R_RANGE 0.4 * power, times the max forward speed and CrumbleSpeedRatio
+    o.vel = [wp[0] / h * spd * CR.cosA, spd * CR.sinA, wp[2] / h * spd * CR.cosA];   // launch angle _A_BASE 75 degrees (sign of the source's rotX pair is my reading, A80)
+    o.spin = { ax: o.vel[0] > o.vel[2] ? [0, 0, 1] : [1, 0, 0], w: 0.2 };   // gNk_StartMonoForceMove: spin 0.2 rad per frame about Z when vx > vz, else X
     o.state = 'fly'; o.flyT = 0; o.hitOff = S.frame + CR.hitOff; o.crumbleVol = 0; o.path = null;
   }
   function flyMonos(S) {                                     // thrown objects: ballistic until they reach the floor, then they lie there and can be caught again
