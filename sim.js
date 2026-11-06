@@ -145,7 +145,7 @@
     opts = opts || {};
     const mf = play.mis.mission_floats;
     GRID = Math.max(40, (opts.startDiam || mf[8]) * 1.5);
-    const startDiam = opts.startDiam || mf[8], tgtInfo = !opts.noTarget && play.mis.target && play.info[play.mis.target], cm = i => opts.catchMode === 'engine' ? engineCatchMm(i) : (opts.catchMode === 'goal' && i.catch_goal_mm !== undefined) ? i.catch_goal_mm : i.catch_mm, goal = opts.goal || (tgtInfo ? cm(tgtInfo) / 10 : mf[9]);   // story clear = pick up the target mono (GameClear.cppi sCheck1P_N); goal is its catch size, used for the HUD gauge
+    const startDiam = opts.startDiam || mf[8], tgtInfo = !opts.noTarget && play.mis.target && play.info[play.mis.target], cm = i => opts.catchMode === 'f0' ? i.catch_mm : (opts.catchMode === 'goal' && i.catch_goal_mm !== undefined) ? i.catch_goal_mm : engineCatchMm(i), goal = opts.goal || (tgtInfo ? cm(tgtInfo) / 10 : mf[9]);   // story clear = pick up the target mono (GameClear.cppi sCheck1P_N); goal is its catch size, used for the HUD gauge
     const S = {
       G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
@@ -222,13 +222,14 @@
   }
 
   // KATAMARI table row at the current diameter, linearly interpolated like gYm_KatamariGetTableParam.
-  // File column order (inferred, ASSUMPTIONS A27): 0 diameter, 1 speed, 2 gravity, 3-6 accel F/B/S/dash, 7-10 speed ratio F/B/S/dash, 13-14 brake F/B
+  // File column order (A27, from the struct offsets that gYm_KatamariGetTableParam reads in the binary): 0 diameter, 1 speed, 2 gravity, 3-6 brake effect F/B/S/dash,
+  // 7-10 max speed ratio F/B/S/dash, 11-12 slope ratio up/down (unused: the shipped game sets IgnoreSlope), 13-16 acceleration F/B/S/dash, 17 prince offset Z, 18-20 alarm near/middle/far
   function tableParams(S) {
     const T = S.tab, d = Math.max(S.diam, T[1] ? T[1][0] : 0);
     let i = 2; while (i < T.length - 1 && d > T[i][0]) i++;
     const a = T[i - 1], b = T[i], t = Math.max(0, Math.min(1, (d - a[0]) / ((b[0] - a[0]) || 1)));
     const L = c => a[c] + (b[c] - a[c]) * t;
-    return { speed: L(1), accF: L(3), accB: L(4), accS: L(5), accD: L(6), rF: L(7), rB: L(8), rS: L(9), rD: L(10), brakeF: L(13), brakeB: L(14) };
+    return { speed: L(1), brakeF: L(3), brakeB: L(4), brakeS: L(5), brakeD: L(6), rF: L(7), rB: L(8), rS: L(9), rD: L(10), accF: L(13), accB: L(14), accS: L(15), accD: L(16), oujiZ: L(17) };
   }
   // Camera row at the current diameter (CAMERA_DATA): eye offset behind/up, look-at offset ahead/up, far clip. Offsets are logic space, y down.
   function cameraParams(S) {
@@ -389,11 +390,12 @@
       // of the max speed for the direction the ball is travelling relative to the prince (front, back or side), and then holds until the input stops opposing
       let braking = false;
       if (oldMag > 1e-4 && (ix * -vx + iz * -vz) / oldMag >= BRAKE_COS) {
-        const along = (fx * vx + fz * vz) / oldMag, mspd = tp.speed * (along > 0.7 ? (S.dash ? tp.rD : tp.rF) : along < -0.7 ? tp.rB : tp.rS);
+        const along = (fx * vx + fz * vz) / oldMag, grp = along > 0.7 ? (S.dash ? 'D' : 'F') : along < -0.7 ? 'B' : 'S', mspd = tp.speed * tp['r' + grp];
         braking = S.brake || oldMag >= KP.brakeSpeedRatio * mspd;
+        if (braking && !S.brake) S.brakeEffect = tp['brake' + grp];   // chosen when the brake starts, by which way the ball travels (sCheckBreakInput)
       }
       S.brake = braking;
-      if (braking) { const b = (dir === 1 ? tp.brakeF : tp.brakeB) * power; vx -= vx / oldMag * Math.min(b, oldMag); vz -= vz / oldMag * Math.min(b, oldMag); }
+      if (braking) { const b = S.brakeEffect * power; vx -= vx / oldMag * b; vz -= vz / oldMag * b; }
       else {
         vx += ix * acc; vz += iz * acc; const nm = Math.hypot(vx, vz);
         if (nm > fmax && nm > oldMag) { const keep = oldMag < fmax ? fmax : oldMag; vx = vx / nm * keep; vz = vz / nm * keep; }   // same overshoot rule as the engine

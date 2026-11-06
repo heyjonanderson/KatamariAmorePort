@@ -468,7 +468,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=16`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=18`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }
@@ -485,7 +485,7 @@ function frame(now) {
 function setPause(on) {
   if (S && (S.won || lost)) on = false;
   paused = on; $('pStop').style.display = MODE === 'exact' ? 'block' : 'none'; $('pStop').textContent = 'Stop with this size'; stopArmed = false; $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
-  if (on) { const cm = qs.get('catch') === 'goal'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'fitted to the goal' : 'from the data (default)') + ' (tap to switch)'; }
+  if (on) { const cm = qs.get('catch') === 'f0'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'old guess (first monolist float)' : 'from the engine formula (default)') + ' (tap to switch)'; }
 }
 function reportText() {
   const now = performance.now(); const fps = Math.round(1000 / Math.max(1, last_dt * 1000));
@@ -500,7 +500,7 @@ const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.ligh
 $('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
 $('pTex').onclick = () => { SET.filter = (SET.filter + 1) % FILTERS.length; saveSet(); applyFilter(); syncSet(); };
 syncSet();
-$('pCatch').onclick = () => { const u = new URL(location.href); if (qs.get('catch') === 'goal') u.searchParams.delete('catch'); else u.searchParams.set('catch', 'goal'); location.href = u.toString(); };
+$('pCatch').onclick = () => { const u = new URL(location.href); if (qs.get('catch') === 'f0') u.searchParams.delete('catch'); else u.searchParams.set('catch', 'f0'); location.href = u.toString(); };
 $('pReport').onclick = () => { const t = $('pText'); t.value = reportText(); t.style.display = 'block'; t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} try { if (navigator.clipboard) navigator.clipboard.writeText(t.value).catch(() => {}); ok = true; } catch (e) {} $('pNote').textContent = (ok ? 'Copied. ' : 'Select and copy this. ') + 'Paste it into a message and add what went wrong.'; };
 document.addEventListener('visibilitychange', () => { if (document.hidden && S && !S.won && !lost) setPause(true); });
 

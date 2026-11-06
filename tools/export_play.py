@@ -53,6 +53,8 @@ for st in STAGES:
         m = dict(m, model_real=real, special=bool(re.match(r'MI[a-z]', m['model'])))
         P = have[real]['pos']; lo = [min(p[k] for p in P) for k in range(3)]; hi = [max(p[k] for p in P) for k in range(3)]
         w, h, dd = [max(hi[k]-lo[k], 0.1) * 0.01 for k in range(3)]
+        bb_ = have[real].get('bbox')                          # stored model box (flag 0x10): the engine's getMaxMin returns this when present (A78)
+        if bb_: w, h, dd = [max(abs(bb_[3+k]-bb_[k]), 0.1) * 0.01 for k in range(3)]
         info[m['name']] = dict(path=path_info, catch_se=cse, anim=anim, cat=m['cat'], label=names_en[mi] if mi < len(names_en) else m['name'], model=real, special=m['special'], lo=lo, hi=hi, boxvol=w*h*dd, catch_mm=m['f'][0], vol_ratio=m['f'][1], add_ratio=m['f'][2])
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLOC.dat'); objs = []
     inf = [x for x in e if x[1] == 'MP_INF'][0]; ib = d[b+inf[2]+4: b+inf[2]+inf[3]]; layers = []
