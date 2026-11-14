@@ -138,7 +138,7 @@ const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
@@ -468,7 +468,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=19`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=20`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }

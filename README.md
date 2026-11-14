@@ -42,11 +42,10 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 - **Tall objects glitch across the screen** (A84). Rolling up a tall object fills the view and hides the level.
 - **Ball stretches into a tall oval** (A85). Seen at 9.5 cm in a tester screenshot.
-- **Moving objects face backwards** (A86).
+- **Moving objects face backwards** (A86). Path followers now turned 180 degrees as a guess. Check it.
 - **Stage 1 trophy rotated 90 degrees** (A87). It is the one that blocks the way to the next area.
-- **Prince's face is upside down** (A81).
+- **Prince's face is upside down** (A81). The binary and the texture say it is upright, so I need to know where it shows. Screenshot please.
 - **Controls should feel like the reference gameplay** (A83). Ask which part is off: stick feel, camera turning, or dash.
-- **Stage layout differs by mode** (A82). Story, Time Attack, Exact Size, and Eternal may have different layouts. Check the stage files for per-mode variants first.
 - **Wall climbing** (A79). Also listed under Ready to build.
 
 ### Needs a human
@@ -85,6 +84,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Catch size solved: the engine reads each model's stored bounding box (A78)
 - Speed table columns decoded; brake and acceleration had been swapped (A27)
 - Crumble throw and thresholds from the source (A80)
+- Each mode loads its own object layout from the stage files (A82)
 - Real drag, stick curve, brake rule, and move-turn
 - Stages 2 to 6 with targets, music, and stair handling
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos

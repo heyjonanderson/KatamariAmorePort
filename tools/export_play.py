@@ -71,10 +71,10 @@ for st in STAGES:
             fl = floats(body)
             mis['splines'][int(m_.group(1))] = [[round(fl[k], 3), round(fl[k+1], 3), round(-fl[k+2], 3)] for k in range(0, len(fl) - 2, 3)]
     for t, n, off, sz in e:
-        if t == 4 and n.startswith('MP_S'):
+        if t == 4 and re.match(r'MP_[A-Z]\d\d$', n):       # one placement set per mode: S story, T time attack, J exact size, E eternal, F unknown (A82)
             names, recs2, _ = T.parse_mloc(d[b+off+4: b+off+sz])
             for q in recs2:
-                if q['name'] in info: objs.append(dict(n=q['name'], layer=int(n[-2:]), p=[round(q['pos'][0], 3), round(q['pos'][1], 3), round(-q['pos'][2], 3)], r=[round(x, 3) for x in q['rot']]))
+                if q['name'] in info: objs.append(dict(n=q['name'], set=n[3], layer=int(n[-2:]), p=[round(q['pos'][0], 3), round(q['pos'][1], 3), round(-q['pos'][2], 3)], r=[round(x, 3) for x in q['rot']]))
     # HIT_MAP collision polygons, triangulated, z mirrored to view space. Sim treats steep ones as walls and uses all of them for camera rays
     d, b, e, _ = dat.parse(f'{SRC}/{st}IBI.dat'); hv, hp, _ok = T.parse_hitmap(chunk(d, b, e, 'HIT_MAP')); hit = []
     ib = chunk(d, b, e, 'IBITSU')                         # per-object shape points (model space): [u16 n, n x (name16, type, u32 offset)], each record u16 floatcount + xyz triples (A60)

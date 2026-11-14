@@ -3,7 +3,7 @@
 const fs = require('fs'), path = require('path'), K = require('../sim.js');
 const stage = process.argv[2] || 'S001', maxF = +(process.argv[3] || 60000), CELLMIN = +(process.argv[4] || 4); let CELL = CELLMIN;
 const play = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', stage, 'play.json'), 'utf8'));
-const S = K.create(play, process.env.CATCH ? { catchMode: process.env.CATCH } : {}); if (process.env.GOAL) S.goal = +process.env.GOAL; for (let i = 0; i < 120; i++) K.step(S, { L: 0, R: 0 });
+const S = K.create(play, Object.assign(process.env.CATCH ? { catchMode: process.env.CATCH } : {}, process.env.SET ? { set: process.env.SET, noTarget: true } : {})); if (process.env.GOAL) S.goal = +process.env.GOAL; for (let i = 0; i < 120; i++) K.step(S, { L: 0, R: 0 });
 const key = (i, j) => i * 100000 + j, ang = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 let why = '', plan = null, planFrame = -1e9, picks = 0, log = [];
 function replan() {

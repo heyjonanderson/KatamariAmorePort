@@ -155,7 +155,9 @@
       lift: 0, liftApplied: 0, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
+    const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
     for (const o of play.objs) {
+      if ((o.set || 'S') !== SET) continue;
       const i = play.info[o.n]; if (!i) continue;
       const ext = [i.hi[0]-i.lo[0], i.hi[1]-i.lo[1], i.hi[2]-i.lo[2]];
       S.objs.push({ n: o.n, model: i.model, pos: o.p.slice(), rot: eulerView(o.r[0], o.r[1], o.r[2]), rawRot: o.r, catchMm: cm(i), boxvol: i.boxvol, addRatio: i.add_ratio,
@@ -163,7 +165,7 @@
     }
     for (const o of S.objs) if (o.path) {                                  // A37: start at the spline point nearest the placed position
       let bt = 0, bd = 1e18; for (let k = 0; k < 600; k++) { const p = splineAt(o.path.pts, k / 600).pos, d = Math.hypot(p[0] - o.pos[0], p[2] - o.pos[2]); if (d < bd) { bd = d; bt = k / 600; } }
-      o.path.t = bt; const sp = splineAt(o.path.pts, bt); o.pos = sp.pos; o.ppos = sp.pos.slice(); o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]));
+      o.path.t = bt; const sp = splineAt(o.path.pts, bt); o.pos = sp.pos; o.ppos = sp.pos.slice(); o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]) + PATH_FACE);
     }
     return S;
   }
@@ -185,7 +187,7 @@
       o.path.t += o.path.speed; if (o.path.t >= 1) o.path.t -= 1;
       const sp = splineAt(o.path.pts, o.path.t);
       o.pos = sp.pos; o.top = o.pos[1] + o.hi[1];
-      if (Math.hypot(sp.tan[0], sp.tan[2]) > 1e-6) o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]));
+      if (Math.hypot(sp.tan[0], sp.tan[2]) > 1e-6) o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]) + PATH_FACE);
     }
   }
   // closest point of an object's oriented bounding box to a world point c. Models are boxed in their own space; world = rot * local + pos
@@ -263,6 +265,7 @@
   // surface at len = R + (tip - R) * spd_ratio, capped at 2.5 R: lumps are full size when the ball rolls at or below its normal top speed and melt away toward dash speed.
   // N (IbitsuCheckDepth) and the cone width (LUMP_SHARP) are guesses; the rest follows the source.
   const FLIP_FRAMES = 14;
+  const PATH_FACE = Math.PI;   // path followers (bus, animals, cars) drove tail first with local +z along the path; a tester reported it, so they now face the other way (A86)
   const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_SHARP = 4, LUMP_CAP = 2.5, LUMP_LIFT_MAX = 0.25;   // the picture shows the full lump, the physics ball rises at most a quarter radius (A64)
   function lumpsOf(S, R) {
     const out = [], L = S.ibiList; if (!L || !L.length) return out;
