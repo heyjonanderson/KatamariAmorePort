@@ -241,7 +241,8 @@ function draw(alpha) {
   const eye = eyeAt(cam.e, cam.L);
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
   const far = Math.max(cp.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
-  const vp = M.mul(M.persp(0.9, w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
+  // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
+  const vp = M.mul(M.persp(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
   gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // map
@@ -263,10 +264,14 @@ function draw(alpha) {
   // prince, behind the ball (PLACEHOLDER P15: placement, scale, walk cycle order and which way the model faces are guesses)
   if (ou && S.diam < 100 && (cam.L === undefined || cam.L > R * 3.5)) {   // hidden if the clipped camera is right on top of it
     const yawI = prevYaw + (S.yaw - prevYaw) * alpha, m = ou.mods['GiOujiM' + (S.flipT > 0 ? 0 : [0, 1, 0, 2][ouji.pat % 4])], fx = Math.sin(yawI), fz = Math.cos(yawI);
-    let off = R + 1.6; { const t = KSim.rayHit(S, pos[0], pos[1] - R * 0.5, pos[2], -fx, 0, -fz, off + 1.5); if (t !== null) off = Math.max(R * 0.6, t - 1.5); }   // do not stand inside a wall behind the ball
-    const c = Math.cos(yawI), sn = Math.sin(yawI), Ry = [-c,0,sn, 0,1,0, -sn,0,-c];     // local -z -> forward (the model faces -z)
+    let off = KSim.tableParams(S).oujiZ; {   // distance behind the ball centre: the speed table's column 17 (f32OujiOffsetZ), not my R + 1.6 (A89)
+      const t = KSim.rayHit(S, pos[0], pos[1] - R * 0.5, pos[2], -fx, 0, -fz, off + 1.5); if (t !== null) off = Math.max(R * 0.6, t - 1.5); }   // do not stand inside a wall behind the ball
+    const c = Math.cos(yawI), sn = Math.sin(yawI), Ry = [-c,0,-sn, 0,1,0, sn,0,-c];    // rotY(yaw + 180 degrees), like the original's prince matrix (FUN_00025bf4): the model's -z face points along the roll direction (A81)
     const ppos = [pos[0] - fx * off, pos[1] - R, pos[2] - fz * off];
-    if (S.flipT > 0) { const t = Math.max(0, Math.min(1, 1 - (S.flipT - alpha) / 14)); ppos[1] += Math.sin(Math.PI * t) * (R * 0.9 + 2.5); G.princeScr = true; }   // quick turn: hop over the ball (A66)
+    if (S.flipT > 0) {   // quick turn (A66, A89): FUN_00026f24 puts him on a straight line over the ball along the heading the hop started with, from z0 behind to z0 in front, peak 2 x diameter high (sin of progress x pi)
+      const t = Math.max(0, Math.min(1, 1 - (S.flipT - alpha) / S.flipN)), f0x = Math.sin(S.flipYaw0), f0z = Math.cos(S.flipYaw0), z0 = KSim.tableParams(S).oujiZ;
+      ppos[0] = pos[0] + f0x * z0 * (2 * t - 1); ppos[2] = pos[2] + f0z * z0 * (2 * t - 1); ppos[1] += Math.sin(Math.PI * t) * 2 * S.diam; G.princeScr = true;
+    }
     // lean into the roll and bob with each step (A63). The model faces -z, so a lean about its x axis tips the head forward
     const moving = S.speed > 0.05, lean = S.dash ? 0.28 : moving ? Math.min(0.1, S.speed * 0.03) : 0, ca = Math.cos(lean), sa = Math.sin(lean);
     const Rl = KSim.mmul(Ry, [1, 0, 0, 0, ca, -sa, 0, sa, ca]); ppos[1] += moving ? Math.abs(Math.sin((ouji.pat + ouji.t / 4) * Math.PI / 2)) * 0.12 : 0;
@@ -468,7 +473,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=20`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=21`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }

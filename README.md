@@ -32,7 +32,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 **From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera data rows, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera follow smoothing, the prince U-turn timing, which sound plays for what, the bus path curve, menu and intro staging, Exact Size targets, and touch controls.
+**Still mine:** camera follow smoothing, which sound plays for what, the bus path curve, menu and intro staging, Exact Size targets, and touch controls.
 
 ## Roadmap
 
@@ -57,7 +57,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Ball growth curve** (A74). A tester says diameter is "really the square root of the real value". The code takes the cube root of volume. Needs a concrete example.
 - **Sound mapping** (A53, P23). None of it has been heard. Nothing plays for rolling, dashing, or the prince.
 - **Phone play** (P11, C8). The stick, buttons, pause menu, and bug report box have never run on a real phone.
-- **Smaller checks:** prince U-turn (A66), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), Exact Size cutoffs (A57).
+- **Smaller checks:** prince U-turn (A66, A89), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), Exact Size cutoffs (A57).
 
 ### Ready to build
 
@@ -72,7 +72,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 ### Blocked on data that is only in the binary
 
 - Camera follow code (P10)
-- Prince U-turn timing (A66)
 - Catch sound routing (A53)
 - Bus path Spline (A35 to A37)
 - Exact Size target sizes (A57)
@@ -85,6 +84,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Speed table columns decoded; brake and acceleration had been swapped (A27)
 - Crumble throw and thresholds from the source (A80)
 - Each mode loads its own object layout from the stage files (A82)
+- Prince U-turn length and arc from the binary, and his distance behind the ball from the speed table (A89)
 - Real drag, stick curve, brake rule, and move-turn
 - Stages 2 to 6 with targets, music, and stair handling
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos

@@ -152,7 +152,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
@@ -264,7 +264,8 @@
   // MonoIbitsu.cppi: the farthest IBITSU tip of each of the last N attached objects becomes a "fluid" distort point (up to 6). Katamari.sSetPosition-style code then puts the
   // surface at len = R + (tip - R) * spd_ratio, capped at 2.5 R: lumps are full size when the ball rolls at or below its normal top speed and melt away toward dash speed.
   // N (IbitsuCheckDepth) and the cone width (LUMP_SHARP) are guesses; the rest follows the source.
-  const FLIP_FRAMES = 14;
+  // OUJI_JUMP in the stage data: [frames at the small end, small diameter, frames at the large end, large diameter] = [12, 10, 20, 80.1]. FUN_00025d8c: frames = trunc(f0 + (f2 - f0) * clamp((diam - d0) / (d1 - d0), 0, 1)) (A89)
+  const flipFrames = S => { const j = (S.ouji_jump || [12, 10, 20, 80.1]); return Math.trunc(j[0] + (j[2] - j[0]) * Math.max(0, Math.min(1, (S.diam - j[1]) / (j[3] - j[1])))); };
   const PATH_FACE = Math.PI;   // path followers (bus, animals, cars) drove tail first with local +z along the path; a tester reported it, so they now face the other way (A86)
   const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_SHARP = 4, LUMP_CAP = 2.5, LUMP_LIFT_MAX = 0.25;   // the picture shows the full lump, the physics ball rises at most a quarter radius (A64)
   function lumpsOf(S, R) {
@@ -367,9 +368,9 @@
     if (inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
     // quick turn (OSTAT Jump180): the original has a U-turn button at the bottom centre of the screen. Pressing it makes the prince hop over the ball and face the other way.
     // Timing is guessed (A66)
-    if (inp.flip && !S.flipHeld && S.flipT === 0) { S.flipT = FLIP_FRAMES; S.events.push({ type: 'flip' }); }
+    if (inp.flip && !S.flipHeld && S.flipT === 0) { S.flipN = flipFrames(S); S.flipT = S.flipN; S.flipYaw0 = S.yaw; S.events.push({ type: 'flip' }); }
     S.flipHeld = !!inp.flip;
-    if (S.flipT > 0) { S.yaw += Math.PI / FLIP_FRAMES; S.flipT--; } else S.yaw += st.turn;
+    if (S.flipT > 0) { S.yaw += Math.PI / S.flipN; S.flipT--; } else S.yaw += st.turn;
     // OUJI_STAT_MOVETURN (OujiCtrl4 sTurn90 while the ball is moving): the velocity turns with the prince and drag drops to MoveTurnRegistRatio (A76)
     const moveTurn = !!st.moveTurn && S.flipT === 0 && Math.hypot(S.v[0], S.v[1]) > 1e-3;
     if (moveTurn) { const c = Math.cos(st.turn), n = Math.sin(st.turn), ox = S.v[0], oz = S.v[1]; S.v[0] = ox * c + oz * n; S.v[1] = oz * c - ox * n; }
