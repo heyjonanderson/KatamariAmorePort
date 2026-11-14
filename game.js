@@ -133,7 +133,6 @@ const UI = {};                                // HUD images
 
 
 // CATCH_SE = [2, 0, n, 0, every]: n picks one of three sounds, every = repeat interval in frames. The file for each n is a guess from clip lengths (A53)
-const EXACT_CM = { S001: 90, S002: 60, S003: 120, S004: 350, S005: 400, S006: 9000 };   // same table as menu.js (A57)
 const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
@@ -142,8 +141,8 @@ function restart() {
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
-  { const tl = play.mis.time_limit || []; S.timeLimit = (MODE === 'eternal' || MODE === 'exact') ? Infinity : (tl[MODE === 'timeattack' ? 1 : 0] || 360); }   // TIME_LIMIT entries: 0 story, 1 time attack (guess, A42)
-  if (MODE === 'exact') S.goal = EXACT_CM[STAGE] || S.goal;   // exact size: the target is just a number to hit, nothing ends the stage until the player stops (A57)
+  { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
+  if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
 }
 
@@ -356,17 +355,16 @@ function drawHud() {
 }
 let toast = null, resShown = false, dlgRes = null;
 
-// End of a run: the King comments in his own words (STRING.dat). Which line set is used for which result is a guess (A43)
+// End of a run: the King comments in his own words (STRING.dat). The rules below are the original's own (FUN_00041520, A92)
 function showResult() {
   resShown = true; const KT = window.KText; if (!KT) return; saveRecord();
-  const elapsed = S.frame / KSim.FPS, left = S.timeLimit - elapsed, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) };
+  const elapsed = S.frame / KSim.FPS, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) }, mm = Math.floor(S.diam * 10 + 1e-6), mis = play.mis, par = (mis.time_limit_n || [])[0];
   let names;
-  if (MODE === 'story') {
-    if (S.won) { const f = left / S.timeLimit, k = f >= 0.5 ? 'STORY_RES03' : f >= 0.2 ? 'STORY_RES01' : 'STORY_RES02'; names = [k]; }
-    else names = ['STORY_FAIL'];
-  } else if (MODE === 'exact') { const e = exactErr(); names = ['SIZE_END', e <= 2 ? 'SIZE_RES03' : e <= 25 ? 'SIZE_RES01' : 'SIZE_RES02']; v.size = e <= 2 ? fmtDiam(S.diam) : fmtDiam(S.goal);
-  } else { const f = S.diam / Math.max(S.goal, 1); names = [f >= 1 ? 'TIME_RES03' : f >= 0.5 ? 'TIME_RES01' : 'TIME_RES02']; }
-  const pages = KT.pages(names, v); if (names[0] === 'STORY_RES01') pages.push(v.time);
+  if (MODE === 'story') names = S.won ? ['STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
+  else if (MODE === 'exact') { const e = exactErr(); names = ['SIZE_END', e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
+  else if (MODE === 'eternal') names = ['ETER_RES'];
+  else names = ['TIME_RES01', mm < mis.ta_goal_mm ? 'TIME_RES02' : 'TIME_RES03'];   // time attack: under the stage's size threshold or not
+  const pages = KT.pages(names, v);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
   const done = () => { $('rRetry').style.display = $('rMenu').style.display = 'block'; };
   if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done);
@@ -459,7 +457,7 @@ function frame(now) {
     if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (S.events.some(e => e.type === 'area')) toast = { t: 4 * KSim.FPS, text: 'New area unlocked' };   // PLACEHOLDER (P21): the original's cue is unknown
-    if (!over && S.frame / KSim.FPS >= S.timeLimit) { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); }
+    if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); } else { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
     if (!over && (Math.abs(inp.L) > 0.2 || Math.abs(inp.R) > 0.2)) { ouji.t += S.dash ? 2 : 1; if (ouji.t >= 4) { ouji.t = 0; ouji.pat = (ouji.pat + 1) % 4; } } else if (ouji.t === 0) ouji.pat = 0;
     spawnDust(over);
@@ -473,7 +471,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=21`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=22`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }
@@ -514,16 +512,16 @@ function saveRecord() {
   try {
     const rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'), r = rec[STAGE] = rec[STAGE] || {}, el = S.frame / KSim.FPS;
     if (MODE === 'story') { if (S.won && (!r.story || el < r.story)) { r.story = +el.toFixed(1); r.newBest = true; } r.cleared = r.cleared || !!S.won; }
-    else if (MODE === 'exact') { const e = exactErr(); if (r.exact === undefined || e < r.exact) { r.exact = e; r.newBest = true; } }
+    else if (MODE === 'exact') { const e = exactErr(); if (r.exactMm === undefined || e < r.exactMm) { r.exactMm = e; r.newBest = true; } }
     else { const k = MODE; if (!r[k] || S.diam > r[k]) { r[k] = +S.diam.toFixed(1); r.newBest = true; } }
     localStorage.setItem('kam_rec', JSON.stringify(rec)); return r.newBest;
   } catch (e) { return false; }
 }
 
 // ---- exact size mode ----
-// Roll to the target size, then "Stop with this size" in the pause menu (the King's own line asks for it). Percent error decides the King's verdict. Thresholds are mine (A57).
+// Roll to the target size, then "Stop with this size" in the pause menu (the King's own line asks for it). Target and tolerance come from the stage's MISSION_DATA_EXT (A91).
 let stopArmed = false;
-function exactErr() { return +(Math.abs(S.diam - S.goal) / S.goal * 100).toFixed(1); }
+function exactErr() { return Math.abs(Math.floor(S.diam * 10 + 1e-6) - play.mis.exact_mm); }   // whole mm away from the target
 $('pStop').onclick = () => {
   if (!stopArmed) { stopArmed = true; $('pStop').textContent = (window.KText ? KText.group('PAUSE_MENU')[1] : 'Are you okay with this size?') + ' Tap again for yes'; return; }
   paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_res_00');

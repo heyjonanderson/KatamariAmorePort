@@ -3,7 +3,6 @@
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 const STAGES = ['S001', 'S002', 'S003', 'S004', 'S005', 'S006'];
-const EXACT_CM = { S001: 90, S002: 60, S003: 120, S004: 350, S005: 400, S006: 9000 };   // PLACEHOLDER (A57): the original's target sizes are not decoded. About 1.2x the story goal, so every stage can reach them
 const PLAYABLE = 6;                                   // all six stages of the first pack run (2 to 6 are only bot-tested, flagged rough)
 const MODES = [
   { id: 'story', name: 'Story', info: 0 },
@@ -43,7 +42,7 @@ function stageScreen() {
     const l = document.createElement('div'); l.className = 'tlab'; l.style.left = (x - 3) + 'px'; l.style.top = (y + 88) + 'px'; l.textContent = names[i] || st;
     box.appendChild(t); box.appendChild(l);
     { let r = {}; try { r = (JSON.parse(localStorage.getItem('kam_rec') || '{}'))[st] || {}; } catch (e) {}
-      const txt = mode === 'story' ? (r.story ? 'best ' + KT.fmtTime(r.story) : '') : mode === 'exact' ? (r.exact !== undefined ? 'best: off by ' + r.exact + '%' : '') : (r[mode] ? 'best ' + (r[mode] >= 100 ? (r[mode] / 100).toFixed(2) + ' m' : r[mode].toFixed(1) + ' cm') : '');
+      const txt = mode === 'story' ? (r.story ? 'best ' + KT.fmtTime(r.story) : '') : mode === 'exact' ? (r.exactMm !== undefined ? 'best: off by ' + KT.fmtSize(r.exactMm / 10) : '') : (r[mode] ? 'best ' + (r[mode] >= 100 ? (r[mode] / 100).toFixed(2) + ' m' : r[mode].toFixed(1) + ' cm') : '');
       if (txt) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 62) + 'px'; f.style.color = '#8dff8d'; f.textContent = (mode === 'story' && r.cleared ? '\u2713 ' : '') + txt; box.appendChild(f); } }
     if (i >= PLAYABLE) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'not ported'; box.appendChild(f); }
     else if (i > 0) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'rough'; box.appendChild(f); }
@@ -84,13 +83,13 @@ const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catc
 async function brief(i) {
   if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES[i]; plays = plays || {};
-  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=13`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=22`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
-  const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit || [], v = { goal };
+  const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit_n || [], v = { goal };
   let pages;
-  if (mode === 'story') { v.time = KT.fmtTime(tl[0] || 360); pages = KT.pages([[KT.group('STORY_INFO')[i]], 'STORY_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(0, 4)], v); }
-  else if (mode === 'timeattack') { v.time = KT.fmtTime(tl[1] || 300); const ti = KT.group('TIME_INFO'), tc = KT.group('TIME_INFO_COM'); pages = KT.pages([[ti[i * 2], ti[i * 2 + 1]], tc, [KT.group('START_GAME')[i]], KT.group('START_COM').slice(4, 6)], v); }
-  else if (mode === 'exact') { v.size = KT.fmtSize(EXACT_CM[st]); pages = KT.pages([[KT.group('SIZE_INFO')[i]], 'SIZE_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(6, 8)], v); }
+  if (mode === 'story') { v.time = KT.fmtTime(tl[2] || 300); pages = KT.pages([[KT.group('STORY_INFO')[i]], 'STORY_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(0, 4)], v); }
+  else if (mode === 'timeattack') { v.time = KT.fmtTime(tl[3] || 240); const ti = KT.group('TIME_INFO'), tc = KT.group('TIME_INFO_COM'); pages = KT.pages([[ti[i * 2], ti[i * 2 + 1]], tc, [KT.group('START_GAME')[i]], KT.group('START_COM').slice(4, 6)], v); }
+  else if (mode === 'exact') { v.size = KT.fmtSize(p.mis.exact_mm / 10); pages = KT.pages([[KT.group('SIZE_INFO')[i]], 'SIZE_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(6, 8)], v); }
   else { const ei = KT.group('ETER_INFO'); pages = KT.pages([[ei[i * 2], ei[i * 2 + 1]], 'ETER_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(8, 10)], v); }
   show('sKing');
   const go = () => { if (dlg) dlg.stop(); location.href = `game.html?stage=${st}&mode=${mode}`; };

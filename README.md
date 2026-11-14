@@ -32,7 +32,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 **From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera data rows, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera follow smoothing, which sound plays for what, the bus path curve, menu and intro staging, Exact Size targets, and touch controls.
+**Still mine:** camera follow smoothing, which sound plays for what, the bus path curve, menu and intro staging, and touch controls.
 
 ## Roadmap
 
@@ -57,7 +57,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Ball growth curve** (A74). A tester says diameter is "really the square root of the real value". The code takes the cube root of volume. Needs a concrete example.
 - **Sound mapping** (A53, P23). None of it has been heard. Nothing plays for rolling, dashing, or the prince.
 - **Phone play** (P11, C8). The stick, buttons, pause menu, and bug report box have never run on a real phone.
-- **Smaller checks:** prince U-turn (A66, A89), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), Exact Size cutoffs (A57).
+- **Smaller checks:** prince U-turn (A66, A89), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), the "Stop with this size" flow (A57).
 
 ### Ready to build
 
@@ -74,7 +74,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Camera follow code (P10)
 - Catch sound routing (A53)
 - Bus path Spline (A35 to A37)
-- Exact Size target sizes (A57)
 - Menu and intro staging (A38 to A41, A58)
 - Unused stage fields
 
@@ -88,6 +87,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Real drag, stick curve, brake rule, and move-turn
 - Stages 2 to 6 with targets, music, and stair handling
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos
+- Time limits, Exact Size targets and tolerances, and the King's result rules, read from the original's data and code (A90 to A92)
 - Exact Size mode with the King's lines, opening story, fall recovery, flip-book animation, and lumpy ball
 - Six languages from the title screen, and size text as `4m02cm8mm`
 - Pause menu with a bug report copy button, lighting, and texture settings
@@ -97,5 +97,5 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 - Esc, P, or the Pause button opens the pause menu. "Bug report" copies the stage, mode, time, size, position, and browser. Paste it into a message and say what went wrong.
 - "Catch size" in the pause menu switches between the engine formula (default) and the old guess (A48, A73, A78).
-- Stages 2 to 6 are flagged "rough" on the stage select, and Exact Size target sizes are placeholders.
+- Stages 2 to 6 are flagged "rough" on the stage select. Time limits, Exact Size targets and the King's result rules now come from the original's data (A90 to A92).
 - Best times and sizes are saved in your browser only.

@@ -13,6 +13,12 @@ def mis_sections(c):
     ends = [x[2] for x in ent[1:]] + [len(c)]
     return {nm: (ty, c[off:end]) for (nm, ty, off), end in zip(ent, ends)}
 def floats(b): k = struct.unpack('>H', b[:2])[0]; return list(struct.unpack('>%df' % k, b[2:2+4*k]))
+def extra_mis(sec):
+    # TIME_LIMIT_1 = [par seconds, ?, story limit, time attack limit, exact limit, eternal limit] (the variant both reference videos match, A90);
+    # MISSION_DATA_EXT = u16 count, then ints: [exact target mm, tolerance mm, 16-byte name, ?, time attack goal mm, ?, floats...] (A91)
+    tb = sec['TIME_LIMIT_1'][1]; n = struct.unpack('>H', tb[:2])[0]; tln = list(struct.unpack('>%dI' % n, tb[2:2+4*n]))
+    me = sec['MISSION_DATA_EXT'][1]; a, b = struct.unpack('>ii', me[2:10]); c = struct.unpack('>3i', me[26:38])
+    return dict(time_limit_n=tln, exact_mm=a, exact_tol_mm=b, ta_goal_mm=c[1])
 for st in STAGES:
     d, b, e, _ = dat.parse(f'{SRC}/{st}MIS.dat'); sec = mis_sections(d[b+e[0][2]+4: b+e[0][2]+e[0][3]])
     sp = floats(sec['SPEED_TABLE'][1]); recs = [sp[2+21*k: 23+21*k] for k in range((len(sp)-2)//21)]
@@ -27,7 +33,7 @@ for st in STAGES:
     rp = floats(sec['RECOVERY_POINT'][1]) if False else list(struct.unpack('>5f', sec['RECOVERY_POINT'][1][2:22]))   # [bottom, x, y, z, angle]; KatamariRecover.cppi: fell when y >= bottom (y down), respawn at the nearest point
     ex = sec['MISSION_DATA_EXT'][1]; target = ex[10:26].decode('latin1').strip()
     mis = dict(target=target, target_raw=target, stoppers=stoppers, addvol=floats(sec['VOLUME_RATIO'][1]), gravity=floats(sec['GRAVITY'][1]), speed=[list(r) for r in recs if len(r) == 21 and r[0] >= 0],
-               mission_floats=mf, recover=rp, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0], ouji_jump=floats(sec['OUJI_JUMP'][1]))
+               mission_floats=mf, recover=rp, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0], ouji_jump=floats(sec['OUJI_JUMP'][1]), **extra_mis(sec))
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLST.dat'); mst = (d, b, e); mons, _ = T.parse_monolist(chunk(d, b, e, 'MONOLIST'))
     d, b, e, _ = dat.parse(f'{SRC}/{st}OBJM.dat'); have = {x[1]: mdl.parse(d[b+x[2]+4: b+x[2]+x[3]]) for x in e if x[0] == 2}
     nd, nb, ne, _ = dat.parse(f'{SRC}/English.lproj/MONONAME.dat'); nch = chunk(nd, nb, ne, 'MONONA%02d' % (int(st[1:]) - 1)); names_en = []
