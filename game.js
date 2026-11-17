@@ -192,7 +192,7 @@ function drawModel(g, m, mat) {
   }
 }
 function objMat(R3, t) { return M.fromR3(R3, t, 1); }
-// ---- lumps (A60, A64): the shape comes from the sim (S.lumps); here the mesh follows it ----
+// ---- lumps (A64): the sim lifts the ball over them. The mesh itself stays round: the original draws the core with a rotation matrix only (mDistort is a copy of mLocalWorld, KatamariHit.cppi), so the stretching I had here (A60) was a guess and is gone (A85, A111) ----
 let pulse = 0;
 function shapeBall(R) {
   const D = ball.data, M_ = ball.mult, B = ball.base, U = ball.dir, lm = S.lumps; let changed = false;
@@ -258,17 +258,16 @@ function draw(alpha) {
   cam.yaw = prevYaw + (S.yaw - prevYaw) * alpha;
   const cfx = Math.sin(cam.yaw), cfz = Math.cos(cam.yaw);
   const eyeFull = [pos[0] - cfx * cam.back, pos[1] + cam.up, pos[2] - cfz * cam.back];
-  // keep the camera inside the room. Ray from the ball toward the wanted eye spot; if something is in the way, swing the camera up and over
-  // (up to ~70 degrees) before shrinking its distance. Goes up and in at once, eases back down and out.
-  const d0 = [eyeFull[0] - pos[0], eyeFull[1] - pos[1], eyeFull[2] - pos[2]], len0 = Math.hypot(d0[0], d0[1], d0[2]) || 1, hz = Math.hypot(d0[0], d0[2]) || 1, e0 = Math.atan2(d0[1], hz), margin = Math.max(0.4, R * 0.08);
-  const eyeAt = (e, L) => [pos[0] + d0[0] / hz * Math.cos(e) * L, pos[1] + Math.sin(e) * L, pos[2] + d0[2] / hz * Math.cos(e) * L];
-  const clearFor = (e, L) => { const t = KSim.rayHit(S, pos[0], pos[1], pos[2], d0[0] / hz * Math.cos(e), Math.sin(e), d0[2] / hz * Math.cos(e), L + margin); return t === null ? L : Math.max(0.3, t - margin); };
-  const Lmin = len0 * 0.35; let bestE = e0, bestL = 0; for (let k = 0; k <= 7; k++) { const e = e0 + k * 0.15, L = clearFor(e, len0); if (L > bestL + 1e-6) { bestL = L; bestE = e; } if (L >= Lmin) { bestL = L; bestE = e; break; } }
-  if (cam.e === undefined || bestE > cam.e) cam.e = bestE; else cam.e += (bestE - cam.e) * (1 - Math.exp(-last_dt * 3));
-  if (cam.L === undefined || bestL < cam.L) cam.L = bestL; else cam.L += (bestL - cam.L) * (1 - Math.exp(-last_dt * 3));
-  cam.L = Math.min(cam.L, clearFor(cam.e, cam.L));                       // safety: smoothed values must not poke through
-  const eye = eyeAt(cam.e, cam.L);
+  // keep the camera inside the room, as the engine does (FUN_000295ec, A112). One ray from the ball to the wanted eye against the stage's camera hit data. No hit: nothing changes. A hit at fraction f of the way
+  // swings the eye straight up, about the horizontal axis across the view, by 10 degrees + 75 degrees * (1 - f), but never past 85 degrees of elevation, at the same distance and with no easing; the eye is then kept
+  // at least 0.1 cm above the floor. (My old rule shrank the distance and eased back; the engine does neither.) cam.L is the eye distance, used below to hide the prince when the camera is on top of the ball
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
+  const rb = [eyeFull[0] - pos[0], eyeFull[1] - pos[1], eyeFull[2] - pos[2]], lb = Math.hypot(rb[0], rb[1], rb[2]) || 1;   // the test ray: ball to the wanted eye
+  const d0 = [eyeFull[0] - tgt[0], eyeFull[1] - tgt[1], eyeFull[2] - tgt[2]], len0 = Math.hypot(d0[0], d0[1], d0[2]) || 1, hz = Math.hypot(d0[0], d0[2]) || 1, e0 = Math.atan2(d0[1], hz);   // the swing turns the eye round the look-at point (c60c: eye = look + R * (eye - look))
+  let e = e0; { const t = KSim.rayHit(S, pos[0], pos[1], pos[2], rb[0] / lb, rb[1] / lb, rb[2] / lb, lb);
+    if (t !== null) { const f = t / lb, sw = Math.min(10 + 75 * Math.min(1, Math.max(0, 1 - f)), 85 - e0 * 180 / Math.PI); e = e0 + Math.max(0, sw) * Math.PI / 180; } }
+  cam.e = e; cam.L = lb;
+  const eye = [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
   const far = Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
@@ -281,7 +280,7 @@ function draw(alpha) {
   for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((S.frame + alpha) * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
-  shapeBall(R); const bpos = pos; pulse *= 0.86;
+  const bpos = pos; pulse *= 0.86;
   G.vp = vp.slice ? vp.slice() : vp;
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
   // attached objects: world = T(ball) * R * [lrot | lpos]
@@ -309,7 +308,8 @@ function draw(alpha) {
   // ball
   gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ball.ibo);
   gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(L.nrm, 3, gl.FLOAT, false, 32, 12); gl.vertexAttribPointer(L.uv, 2, gl.FLOAT, false, 32, 24);
-  gl.uniformMatrix4fv(L.model, false, M.fromR3(S.R, bpos, R * (1 + 0.05 * pulse))); gl.uniform1f(L.use, 1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ball.tex);
+  { const R0 = S.startDiam / 2, Rd = R0 + (R - R0) * 0.38;   // the core is drawn smaller than the physical ball: diameter = start + (d - start) * DispScaleRatio 0.38 (KatamariMain.cppi gYm_KatamariMakeScaleMatrix, drawn with mScaleDisp, A111)
+    gl.uniformMatrix4fv(L.model, false, M.fromR3(S.R, bpos, Rd * (1 + 0.05 * pulse))); } gl.uniform1f(L.use, 1); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ball.tex);
   gl.drawElements(gl.TRIANGLES, ball.n, gl.UNSIGNED_SHORT, 0);
 }
 
@@ -514,7 +514,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=32`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=32`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=33`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=33`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }

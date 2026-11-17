@@ -33,7 +33,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 **From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, wall angles, the wall bounce and the landing bounce (A103, A108), the zoom echo, per-stage music and catch sounds (A50, A104), the three opening stories from the original script tables (A107), text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera wall avoidance, which sound plays while objects act, menu layout and transitions, the intro's text font, and touch controls.
+**Still mine:** parts of the camera wall avoidance (A112), the angle rule for steering (A113), which sound plays while objects act, menu layout and transitions, the intro's text font, and touch controls.
 
 ## Roadmap
 
@@ -60,6 +60,8 @@ Built and bot-tested, but only a person can say if it feels right. Ordered so yo
 - **Stage 1 hallway pop-in** (A51, A52) [S]. Objects now grow in when the ball reaches 19 cm and the draw distance is longer. Check it does not pop and that it matches the video.
 - **Lumps in the physics** (A64) [S]. Long objects lift the ball slightly as they roll under it, capped at a quarter of the radius. Check it is not bumpy and does not snag on low things.
 - **Lighting and texture settings** (A67) [S]. Pause menu has Lighting (Soft, Flat, Strong) and Textures (Smooth, Sharp, Pixel). Say which pair looks closest to the real game so I can make it the default.
+- **Ball shape and core size** (A111) [S]. New. The ball no longer stretches into an oval (that was my guess, A60) and the core is drawn smaller than the object shell, 0.38 of the growth, like the original. Check 10, 30 and 100 cm: no oval, and no hollow look.
+- **Camera against walls** (A112) [S]. New. Pressing the ball into a wall or corner now snaps the camera upward at once, up to nearly top-down, at the same distance, instead of sliding in and easing back. Check it looks like the reference videos.
 - **Phone** (P11, C8) [S]. The floating stick, dash and U-turn buttons, pause menu and bug report box have never run on a real phone. Also check landscape, safe areas and that audio starts after the first tap.
 
 ### Waiting on a tester
@@ -72,17 +74,15 @@ Reports I could not reproduce from the data. I will try to reproduce each one fi
 - **Prince’s face upside down** (A81) [S]. The binary draws him with one plain matrix and the texture mapping checks out. Where does it happen: the hop, the start of the stage, the menu?
 - **Controls like the reference gameplay** (A83) [M]. Which part: touch stick, two-stick feel, camera turning, or dash? Without that I can only compare to the videos.
 - **Ball growth curve** (A74) [S]. A tester says diameter is “really the square root of the real value”. The code takes the cube root of volume like the engine. A concrete example (object, size before, size after) would show if something else is off.
-- **Tall objects fill the screen** (A84) [M]. Screenshot shows the view blocked after rolling up a tall object. I will try to reproduce it with the bot first. Need to know which stage and object if I cannot.
-- **Ball stretches into a tall oval** (A85) [M]. Screenshot at 9.5 cm. Could be the lump shape or a scale bug. I will try to reproduce it first.
+- **Tall objects fill the screen** (A84, A112) [M]. Could not reproduce the view being blocked by attached objects: the camera sits far enough back that they never reach it. Best guess is the camera clipping into geometry while climbing, which the new wall avoidance (A112) changes. Need to know whether it still happens, and on which stage and object.
 
 ### I can do these now
 
 The data or code is in the app and nothing is in the way. This is the work queue.
 
 - **Find what blocks stage 2 (South American Ruins)** (A79, A98, A110) [M]. Tester says it cannot be finished. The bot also stalls at about 46 cm on S002. Wall climb is in but has never been played. Find the stuck spot with the bot and compare the wall or step height there with the climb limit.
-- **Reproduce the tall object and oval ball reports** (A84, A85) [M]. Run the bot, render at the sizes in the screenshots, check attached objects against the camera near plane and the lump shape.
-- **Camera wall avoidance** (A102, A108, P18) [M]. Follow, rows, the zoom echo and the shrink flag (dead code in the original) are done. Still mine: the wall avoidance when something is between the camera and the ball (FUN_000295ec, only partly read), and the new-area flag.
-- **Rest of the physics table** (A71, A76, A103, A108) [M]. Wall angle, the wall bounce and the landing bounce are in (A103, A108). Still unused: the fly and landing times, display scale growth. Also whether a back push turns the prince around or reverses.
+- **Check the camera wall avoidance assumptions** (A112) [S]. The swing rule is from the binary: one ray, 10 + 75 degrees by how close the hit is, capped at 85 degrees, no easing. Still unconfirmed: where the ray starts, the swing axis, and what the blocked flag at +0x230 drives. Compare with a reference video of a camera against a wall.
+- **Steering by the engine’s angle rule (sTurn)** (A113, A76) [M]. The turn constants are the engine’s, but the port turns by stick power difference. The source turns by the combined stick angle with TurnFastAngleF/B and SideAngle, and has its own backward branch. Port it if steering feels off.
 - **Test build_all.py on a clean folder** (C4) [S]. The export scripts take arguments and chain, but only two have been re-run that way.
 - **Result screens and end text per pack** (A104) [M]. King lines come from the binary’s pack rule (A105). The extra score and unlock screens of each pack (EXTRA_RES, ACHIEVEMENT, UNLOCK_EX) are not built.
 - **Records, shop and album screens** (A55) [L]. SCORE, SHOP, ALBUM and EXTRA data files ship with the app. Today only best times and sizes are kept, with no score screen.
@@ -114,6 +114,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Ball core drawn at the engine’s display size and never stretched (A111); camera wall avoidance rule read from the binary (A112); back push and the turn constants checked against the source (A113)
 - Zoom-out sizes checked against a tester’s list for all six areas: every size is a row in the stage’s camera table, so nothing to change (A110)
 - Opening stories of all three packs played from the original script tables: sprites, timing, fades, speech balloons, music and the closing scroll, with a tap to skip (A107)
 - Landing bounce from the engine (5 frame minimum flight, 0.55 up, 0.95 sideways, crumble from long falls) and the camera zoom echo with its real constants; the shrink flag turned out to be dead code (A108)

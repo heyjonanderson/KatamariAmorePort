@@ -37,7 +37,8 @@ function replan() {
   if (process.env.DBG && S.frame - (replan.lastLog || -1e9) > 600) { replan.lastLog = S.frame; const tk = [[81,61],[-94,82],[89,174]].map(p => dist.has(key(Math.round(p[0]/CELL), Math.round(p[1]/CELL))) ? 'Y' : 'n').join(''); log.push(`f${S.frame} diam ${S.diam.toFixed(1)} cells ${dist.size} probes ${tk}`); }
 }
 let noTarget = 0, lastPos = S.pos.slice(), stuckT = 0;
-for (let f = 0; f < maxF && !S.won && S.frame < maxF; f++) {
+const INPLOG = process.env.INPLOG, STOPDIAM = +(process.env.STOPDIAM || 0), INP = [];   // INPLOG=file STOPDIAM=cm: write the bot's inputs up to that size, so a browser can replay them (same sim, same state)
+for (let f = 0; f < maxF && !S.won && S.frame < maxF && !(STOPDIAM && S.diam >= STOPDIAM); f++) {
   if (S.frame - planFrame > (plan && plan.target && plan.target.n === S.target ? 12 : 90) || !plan || !plan.route || plan.target.state !== 'map') replan();
   let inp = { fwd: 0, turn: 0 };
   if (plan.route) {
@@ -47,9 +48,11 @@ for (let f = 0; f < maxF && !S.won && S.frame < maxF; f++) {
     noTarget = 0;
   } else { noTarget++; inp = { turn: 0.5, fwd: noTarget % 120 > 60 ? 1 : 0 }; /* wander a little: the planner can sit in a cell it thinks is blocked */ if (noTarget > 600) { log.push('no reachable catchable target at frame ' + S.frame + ' diam ' + S.diam.toFixed(2)); break; } }
   if (process.env.TRACE && S.frame % 300 === 0) console.log(S.frame, 'pos', S.pos.map(v => v.toFixed(0)).join(','), 'diam', S.diam.toFixed(1), 'target', plan.target && plan.target.n + '@' + plan.target.pos.map(v => v.toFixed(0)), 'route', plan.route ? plan.route.length : 0);
+  if (INPLOG) INP.push(inp);
   const before = S.picked; K.step(S, inp); if (S.picked > before || S.events.some(e => e.type === 'area')) { picks = S.picked; planFrame = -1e9; if (S.events.some(e => e.type === 'area')) log.push('area event at frame ' + S.frame + ' diam ' + S.diam.toFixed(1)); }
   if (S.frame % 150 === 0) { if (Math.hypot(S.pos[0] - lastPos[0], S.pos[2] - lastPos[2]) < 0.2 * K.radius(S)) stuckT++; else stuckT = 0; lastPos = S.pos.slice(); if (stuckT >= 4) { log.push('stuck at frame ' + S.frame + ' pos ' + S.pos.map(v => v.toFixed(1)) + ' diam ' + S.diam.toFixed(2) + ' target ' + (plan.target && plan.target.n)); plan = null; stuckT = 0; for (let i = 0; i < 40; i++) K.step(S, { fwd: -1, turn: 0.5 }); } }
 }
+if (INPLOG) require('fs').writeFileSync(INPLOG, JSON.stringify(INP));
 console.log(`${stage}: frames ${S.frame} (${(S.frame / 30).toFixed(0)} s), picked ${S.picked}/${S.objs.length}, diam ${S.diam.toFixed(2)} cm, goal ${S.goal}, won ${S.won}`); { const t = S.objs.find(o => o.n === S.target); if (t) console.log('  target', t.n, 'state', t.state, 'path t', t.path && t.path.t.toFixed(3), 'ball', S.pos.map(v => v.toFixed(0)).join(',')); }
 if (log.length) console.log('  ' + log.slice(0, 8).join('\n  '));
 if (!S.won) { const R = K.radius(S), rem = S.objs.filter(o => o.state === 'map'), cat = rem.filter(o => o.catchMm <= S.diam * 10);

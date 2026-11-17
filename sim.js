@@ -265,7 +265,7 @@
     if (bL && idleR) return { turn: -TURNDELTA3 * ex(pl), power: 0, dir: 0 };          // sTurnSL
     if (bR && idleL) return { turn: TURNDELTA3 * ex(pr), power: 0, dir: 0 };           // sTurnSR
     if (fL && fR) return { turn: MOVEDELTA * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: 1 };
-    if (bL && bR) return { turn: -MOVEDELTA_B * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: -1 };   // PLACEHOLDER: both back = reverse
+    if (bL && bR) return { turn: -MOVEDELTA_B * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: -1 };   // both back = reverse; the source has a real backward branch with MoveDeltaB (OujiCtrl4.cppi sTurn, A113), constants are gf32DefaultOujiParam
     if (fL && bR) return { turn: TURNDELTA2 * Math.min(1, ex((pl + pr) / 2) + 0.0), power: 0, dir: 0, moveTurn: true };    // sTurn90: spin right
     if (fR && bL) return { turn: -TURNDELTA2 * Math.min(1, ex((pl + pr) / 2)), power: 0, dir: 0, moveTurn: true };
     return { turn: 0, power: 0, dir: 0 };
