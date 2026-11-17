@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=33">
+<link rel="stylesheet" href="ui.css?v=35">
 </head>
 <body>
 <div class="kbox" id="box">
@@ -39,8 +39,22 @@
     <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/MODE/ModMBG.png)"></div>
     <div class="hdr" id="stHdr"></div>
     <div id="stTiles"></div>
-    <div class="small" id="stBack" style="left:12px;bottom:10px">Back</div><div class="small" id="stPack" style="left:70px;bottom:10px">Packs</div><div class="small" id="stDemo" style="right:12px;bottom:10px">Replay intro</div>
+    <div class="small" id="stBack" style="left:12px;bottom:10px">Back</div><div class="small" id="stPack" style="left:70px;bottom:10px">Packs</div><div class="small" id="stRec" style="left:130px;bottom:10px">Records</div><div class="small" id="stAlb" style="left:200px;bottom:10px">Collection</div><div class="small" id="stDemo" style="right:12px;bottom:10px">Replay intro</div>
     <div class="info" id="stInfo" style="bottom:12px;left:80px;right:80px"></div>
+  </div>
+  <!-- records: the clipboard art from SCORE.dat. Best results per stage and mode, kept in this browser -->
+  <div class="scr" id="sRec">
+    <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/SCORE/ScoSPC2.png)"></div>
+    <div class="img" style="left:95px;top:1px;width:290px;height:318px;background-image:url(ui/SCORE/ScoSCORE.png);background-position:-1px -3px"></div>
+    <div class="clip" id="rcHdr"></div><div class="clip" id="rcMode" style="cursor:pointer"></div><div class="clip" id="rcRows"></div>
+    <div class="small" id="rcBack" style="left:12px;bottom:10px">Back</div><div class="small" id="rcPack" style="right:12px;bottom:10px"></div>
+  </div>
+  <!-- collection: the album book from ALBUM.dat. The items that were stuck on the ball when a stage was cleared -->
+  <div class="scr" id="sAlb">
+    <div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/ALBUM/AlbSPC.png)"></div>
+    <div class="img" style="left:0;top:0;width:480px;height:320px;background-image:url(ui/ALBUM/AlbBG1.png)"></div>
+    <div class="alb" id="abHdr"></div><div class="alb" id="abList"></div><div class="alb" id="abName"></div><div class="alb" id="abCount"></div><div class="alb" id="abInfo"></div>
+    <div class="small" id="abBack" style="left:12px;bottom:10px">Back</div><div class="small" id="abStage" style="right:12px;bottom:10px"></div>
   </div>
   <!-- mission card: the King, then his briefing -->
   <div class="scr" id="sKing">
@@ -54,10 +68,10 @@
     <div class="small" id="dSkip" style="right:12px;top:10px">Skip</div>
   </div>
 </div>
-<script src="load.js?v=33"></script>
-<script src="audio.js?v=33"></script>
-<script src="text.js?v=33"></script>
-<script src="intro.js?v=33"></script>
-<script src="menu.js?v=33"></script>
+<script src="load.js?v=35"></script>
+<script src="audio.js?v=35"></script>
+<script src="text.js?v=35"></script>
+<script src="intro.js?v=35"></script>
+<script src="menu.js?v=35"></script>
 </body>
 </html>

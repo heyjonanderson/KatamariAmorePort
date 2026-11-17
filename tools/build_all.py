@@ -1,5 +1,6 @@
 # Rebuilds data/ from a decrypted app folder (the unzipped Payload/<name>.app).
 # Usage: python3 tools/build_all.py APP_FOLDER [WEB_ROOT] [--tex TEXDIR]
+# Tested on a clean folder (C4): the data/ and ui/ it writes are identical to the checked-in ones, apart from data/intro.json (Ghidra only, tools/export_intro.ghidra.py) and the key order inside play.json.
 # Order: textures dump, models and stages, per-stage sim data, ball and prince models, UI art, strings (six languages).
 # export_play.py and export_names.py run for the 18 playable stages (three packs of six). Only export_core.py and export_strings.py were re-run from this
 # script after the arguments were added; the rest ran earlier with the same arguments by hand (ASSUMPTIONS C4).
@@ -22,7 +23,8 @@ run(os.path.join(T, 'export_play.py'), APP, DATA, *play)
 run(os.path.join(T, 'export_names.py'), APP, DATA, *play)
 run(os.path.join(T, 'export_core.py'), APP, DATA)
 run(os.path.join(T, 'export_ouji.py'), APP, DATA)
-run(os.path.join(T, 'export_ui.py'), APP, os.path.join(WEB, 'ui'))
+UI = ['GAMEDT2x', 'IMAGE', 'KING', 'LOGOE', 'MODE', 'OP1', 'OP2', 'OP3', 'SDEMO_2x', 'SELECT', 'TITLE', 'ALBUM', 'EXTRA', 'SCORE', 'SHOP']   # export_ui.py needs the file names; without them it writes nothing (found when C4 was tested on a clean folder)
+run(os.path.join(T, 'export_ui.py'), APP, os.path.join(WEB, 'ui'), *UI)
 for lang, code in [('English', 'en'), ('French', 'fr'), ('German', 'de'), ('Italian', 'it'), ('Japanese', 'ja'), ('Spanish', 'es')]:
     run(os.path.join(T, 'export_strings.py'), APP, os.path.join(DATA, 'strings_%s.json' % code), lang)
 print('done. Run: node tests/bot2.js S001, node tests/game_smoke.js')

@@ -62,9 +62,36 @@ function stageScreen() {
     else if (i > 0) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'rough'; box.appendChild(f); }
     t.onclick = () => { if (i >= PLAYABLE) { $('stInfo').textContent = KT.group('COMING_SOON')[0].replace('\n', ' '); return; } KSnd.se('KD_SE_common_00'); brief(i); };
   });
-  $('stBack').onclick = modeScreen; $('stPack').onclick = packScreen; $('stDemo').onclick = () => demo(stageScreen);
+  $('stBack').onclick = modeScreen; $('stPack').onclick = packScreen; $('stDemo').onclick = () => demo(stageScreen); $('stRec').onclick = () => recScreen(mode); $('stAlb').onclick = () => albScreen(0);
 }
 
+
+// Records: the clipboard art of SCORE.dat with the stage bests kept by game.js (kam_rec). Layout of the text on the clipboard is mine (A114)
+function recScreen(m) {
+  show('sRec'); KT.setPack(pack); const names = KT.group('STAGE_NAME'), sc = KT.group('SCORE_CONT'), order = ['story', 'timeattack', 'exact', 'eternal'], mi = Math.max(0, order.indexOf(m));
+  let rec = {}; try { rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'); } catch (e) {}
+  $('rcHdr').textContent = sc[0]; $('rcMode').textContent = sc[1 + mi] + ' \u25B8'; $('rcMode').onclick = () => recScreen(order[(mi + 1) % 4]);
+  const mmss = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0'), fmt = (r) => m === 'story' ? (r.story ? (r.cleared ? '\u2713 ' : '') + mmss(r.story) : '-') : m === 'exact' ? (r.exactMm !== undefined ? '\u00b1' + KT.fmtSize(r.exactMm / 10) : '-') : (r[m] ? KT.fmtSize(r[m]) : '-');
+  const box = $('rcRows'); box.innerHTML = '';
+  STAGES().slice(0, PLAYABLE).forEach((st, i) => { const r = rec[st] || {}, d = document.createElement('div'); d.className = 'r'; const a = document.createElement('span'), b = document.createElement('b'); a.textContent = names[i] || st; b.textContent = fmt(r); d.appendChild(a); d.appendChild(b); box.appendChild(d); });
+  $('rcBack').onclick = stageScreen;
+  $('rcPack').textContent = 'Pack ' + pack + ' \u25B8'; $('rcPack').onclick = () => { pack = pack % 3 + 1; recScreen(m); };
+}
+
+// Collection: the album book of ALBUM.dat. Items stuck on the ball when a story stage was cleared; the achievement and Extra stage counts come from the pickup rules in MonoHit.cppi (A114)
+function albScreen(si) {
+  show('sAlb'); KT.setPack(pack); const names = KT.group('STAGE_NAME'), al = KT.group('ALBUM');
+  let col = { ach: {}, extra: [0, 0, 0], alb: {} }; try { col = Object.assign(col, JSON.parse(localStorage.getItem('kam_col') || '{}')); } catch (e) {}
+  const st = STAGES()[si], items = Object.entries((col.alb || {})[st] || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  $('abHdr').textContent = al[1] || 'Collection';
+  const box = $('abList'); box.innerHTML = '';
+  if (!items.length) { const d = document.createElement('div'); d.textContent = '\u2013'; box.appendChild(d); }
+  items.forEach(([k, n]) => { const d = document.createElement('div'), a = document.createElement('span'), b = document.createElement('span'); a.textContent = k; b.textContent = '\u00d7' + n; d.appendChild(a); d.appendChild(b); box.appendChild(d); });
+  const nAch = Object.keys(col.ach || {}).length;
+  $('abName').textContent = names[si] || st; $('abCount').textContent = items.length;
+  $('abInfo').textContent = (al[0] || '').replace('\n', ' ') + '\n\n' + nAch + ' achievements  \u00b7  Extra item ' + (col.extra && col.extra[pack - 1] ? 'found' : 'not found');
+  $('abStage').textContent = (names[si] || st) + ' \u25B8'; $('abStage').onclick = () => albScreen((si + 1) % PLAYABLE); $('abBack').onclick = stageScreen;
+}
 
 // Opening story: played from the original's script tables by intro.js (data/intro.json, A107). The strings are STORY_DEMO1 to 3 (16, 18 and 16 strings: the last two or so are the lines shown during the ending scroll)
 let intro = null;
@@ -82,7 +109,7 @@ const demoSeen = () => { try { return !!localStorage.getItem(demoKey()); } catch
 async function brief(i) {
   if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES()[i]; KT.setPack(pack); plays = plays || {};
-  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=33`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=35`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
   const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit_n || [], v = { goal };
   let pages;

@@ -144,7 +144,7 @@ function restart() {
   S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; KSnd.bgm('BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0')); ouji = { pat: 0, t: 0 };
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; KSnd.bgm('BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0')); ouji = { pat: 0, t: 0 };
   { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
@@ -388,7 +388,7 @@ let toast = null, resShown = false, dlgRes = null, failSnd = false, failN = 0;
 
 // End of a run: the King comments in his own words (STRING.dat). The rules below are the original's own (FUN_00041520, A92)
 function showResult() {
-  resShown = true; const KT = window.KText; if (!KT) return; saveRecord();
+  resShown = true; const KT = window.KText; if (!KT) return; saveRecord(); saveAlbum();
   const elapsed = S.frame / KSim.FPS, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) }, mm = Math.floor(S.diam * 10 + 1e-6), mis = play.mis, par = (mis.time_limit_n || [])[0];
   let names;
   if (MODE === 'story') names = S.won ? [PACK === 2 && LOCAL === 0 ? '=STORY_RES002' : 'STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
@@ -461,7 +461,7 @@ function hud() {
   drawHud();
   if (S && G.ready) drawFx();
   if (!S) return;
-  if (toast) { const cv = $('hud'), x = cv.getContext('2d'), a = Math.min(1, toast.t / 30); x.save(); x.globalAlpha = a; x.font = `bold ${Math.round(cv.height * 0.035)}px sans-serif`; x.textAlign = 'center'; x.shadowColor = '#000c'; x.shadowBlur = 6; x.fillStyle = '#fff'; x.fillText(toast.text, cv.width / 2, cv.height * 0.2); x.restore(); toast.t--; if (toast.t <= 0) toast = null; }
+  if (toast) { const cv = $('hud'), x = cv.getContext('2d'), a = Math.min(1, toast.t / 30); x.save(); x.globalAlpha = a; x.font = `bold ${Math.round(cv.height * 0.035)}px sans-serif`; x.textAlign = 'center'; x.shadowColor = '#000c'; x.shadowBlur = 6; x.fillStyle = '#fff'; toast.text.split('\n').forEach((ln, k) => x.fillText(ln, cv.width / 2, cv.height * (0.2 + 0.045 * k))); x.restore(); toast.t--; if (toast.t <= 0) toast = null; }
   if ((S.won || lost) && !resShown) showResult();
 }
 
@@ -484,6 +484,7 @@ function frame(now) {
       prevDash = S.dash; }
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') gotPick = true;
+      if (ev.type === 'pickup') collect(ev.name);
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
       if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = catchSeFile(STAGE, cs[2]); activeCatch = { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
@@ -514,7 +515,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=33`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=33`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=35`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=35`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
@@ -558,6 +559,26 @@ syncSet();
 $('pCatch').onclick = () => { const u = new URL(location.href); if (qs.get('catch') === 'f0') u.searchParams.delete('catch'); else u.searchParams.set('catch', 'f0'); location.href = u.toString(); };
 $('pReport').onclick = () => { const t = $('pText'); t.value = reportText(); t.style.display = 'block'; t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} try { if (navigator.clipboard) navigator.clipboard.writeText(t.value).catch(() => {}); ok = true; } catch (e) {} $('pNote').textContent = (ok ? 'Copied. ' : 'Select and copy this. ') + 'Paste it into a message and add what went wrong.'; };
 document.addEventListener('visibilitychange', () => { if (document.hidden && S && !S.won && !lost) setPause(true); });
+
+
+// ---- achievements, mini-game items and the album (MonoHit.cppi, A114) ----
+// Picking up a mono whose id STARTS WITH one of the pack's 14 achievement ids (strncmp on the id's length) for the first time shows ACHIEVEMENT; the pack's own extra id (PACMAN, TEKKENKUMA, GALAGA) shows UNLOCK_EX once.
+// The ids and their order are the strings in the binary (AchievementIDs; 14 per pack, the last being COMPLETEPACKn which is not a pickup). The original gates the achievement on Game Center and shows the King's dialog; the port shows the same text as a banner and keeps the state in localStorage
+const ACH_IDS = [['CARD', 'CHECKBOARD', 'SKULL', 'MANTANKEN_D', 'SALE', 'COFFIN', 'CHINAMENU', 'KIRIN', 'SPACEDOG', 'CHAKURIKU', 'GRANGE', 'SEADRA', 'BERRY'],
+  ['MASCOT', 'MONOCYCLE', 'MANHOLE', 'OBELISK', 'BEEFBONE', 'BIGMONEY', 'REDBEANS', 'SHERIFF', 'ROSETTA', 'SHIP06', 'TAXFREE', 'COLTOWER', 'FISH04_D'],
+  ['GREETING', 'PICTUREBOOK', 'TOOTHFAIRY', 'MANBALLOON_D', 'WOLFMAN', 'JACK02', 'GUARD', 'TABLESOCCER', 'HOTDOGSHOP', 'TURKEY', 'GASBAG', 'CHERRY', 'BOSSGALAGA']], EXTRA_ID = ['PACMAN', 'TEKKENKUMA', 'GALAGA'];
+const runItems = {};                                        // what is stuck on the ball this run, by label (the album keeps it when the stage is cleared)
+function colLoad() { try { const c = JSON.parse(localStorage.getItem('kam_col') || '{}'); c.ach = c.ach || {}; c.extra = c.extra || [0, 0, 0]; c.alb = c.alb || {}; return c; } catch (e) { return { ach: {}, extra: [0, 0, 0], alb: {} }; } }
+function colSave(c) { try { localStorage.setItem('kam_col', JSON.stringify(c)); } catch (e) {} }
+function collect(name) {
+  const inf = S.info[name], lab = (inf && inf.label) || name; runItems[lab] = (runItems[lab] || 0) + 1;
+  const KT = window.KText; if (!KT) return; const c = colLoad(); let msg = null;
+  if (name.startsWith(EXTRA_ID[PACK - 1]) && !c.extra[PACK - 1]) { c.extra[PACK - 1] = 1; msg = KT.clean(KT.group('UNLOCK_EX')[0] || ''); }
+  for (const id of ACH_IDS[PACK - 1]) { if (!name.startsWith(id) || c.ach[id]) continue; if (id === 'GUARD' && STAGE_N !== 18) continue;   // index 34 only counts in stage 17 (0-based), as the original does
+    c.ach[id] = 1; if (!msg) msg = KT.clean(KT.group('ACHIEVEMENT')[0] || ''); }
+  if (msg) { colSave(c); toast = { t: 4 * KSim.FPS, text: msg }; }
+}
+function saveAlbum() { if (MODE !== 'story' || !S.won) return; const c = colLoad(), a = c.alb[STAGE] = c.alb[STAGE] || {}; for (const k in runItems) a[k] = Math.max(a[k] || 0, runItems[k]); colSave(c); }
 
 // ---- records (localStorage, per stage and mode): best clear time for story, biggest ball for the other two ----
 function saveRecord() {

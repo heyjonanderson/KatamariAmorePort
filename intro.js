@@ -16,7 +16,7 @@
   const bgmName = id => id <= 2 ? 'KD_BGM_0' + id : id === 3 ? 'BGM_ST00' : id <= 6 ? 'KD_BGM_0' + id : id <= 12 ? 'BGM_ST0' + (id - 6) : 'BGM_ST' + String(id - 5).padStart(2, '0');
 
   async function play(o) {
-    if (!DATA) DATA = await (await fetch('data/intro.json?v=33')).json();
+    if (!DATA) DATA = await (await fetch('data/intro.json?v=35')).json();
     const P = DATA[o.pack], cv = o.canvas, g = cv.getContext('2d'), texts = o.texts;
     const bal = await loadImg('ui/IMAGE/SYSBAL.png'), tint = document.createElement('canvas'); tint.width = W; tint.height = H;
     const sheets = {}; await Promise.all([...new Set(P.sprites.map(s => s[0]))].map(async n => { sheets[n] = await loadImg(`ui/OP${o.pack}/${n}.png`); }));
