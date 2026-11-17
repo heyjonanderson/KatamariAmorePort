@@ -24,7 +24,7 @@ for st in STAGES:
     sp = floats(sec['SPEED_TABLE'][1]); recs = [sp[2+21*k: 23+21*k] for k in range((len(sp)-2)//21)]
     md = sec['MISSION_DATA'][1]; mf = [struct.unpack('>f', md[7+4*k: 11+4*k])[0] for k in range(11)]
     cf = floats(sec['CAMERA_DATA'][1]); cam = [cf[i:i+10] for i in range(0, len(cf) - 9, 10) if cf[i] >= 0]
-    gb = sec['GRAPHICS'][1]; gr = struct.unpack('>4f', gb[2:18])
+    gr = struct.unpack('>4f', sec['GRAPHICS'][1][2:18]) if 'GRAPHICS' in sec else (0.1, 800.0, 1.0, 10000.0)   # S015 and S017 have no GRAPHICS section: S001's two near/far pairs stand in (A104)
     tb = sec['TIME_LIMIT'][1]; tl = list(struct.unpack('>%dI' % struct.unpack('>H', tb[:2])[0], tb[2:]))
     es = sec['ERASE_STOPPER'][1] if 'ERASE_STOPPER' in sec else b'\x00\x00'; en = struct.unpack('>H', es[:2])[0]; ev = list(struct.unpack('>%di' % en, es[2:2+4*en])); stoppers = []
     for k in range(0, len(ev) - 1, 2):

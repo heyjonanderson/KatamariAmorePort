@@ -1,7 +1,7 @@
 # Rebuilds data/ from a decrypted app folder (the unzipped Payload/<name>.app).
 # Usage: python3 tools/build_all.py APP_FOLDER [WEB_ROOT] [--tex TEXDIR]
 # Order: textures dump, models and stages, per-stage sim data, ball and prince models, UI art, strings (six languages).
-# export_play.py runs for the first six stages. Only export_core.py and export_strings.py were re-run from this
+# export_play.py and export_names.py run for the 18 playable stages (three packs of six). Only export_core.py and export_strings.py were re-run from this
 # script after the arguments were added; the rest ran earlier with the same arguments by hand (ASSUMPTIONS C4).
 import os, sys, json, subprocess
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -17,7 +17,9 @@ run(os.path.join(T, 'export.py'), APP, DATA, TEX)
 run(os.path.join(T, 'export_stage.py'), APP, DATA)
 stages = json.load(open(os.path.join(DATA, 'stages.json')))
 names = [s if isinstance(s, str) else s.get('id') or s.get('name') for s in stages] if isinstance(stages, list) else list(stages)
-run(os.path.join(T, 'export_play.py'), APP, DATA, *names[:6])   # the first pack; stages 7 and up are not exported (ASSUMPTIONS A44)
+play = [n for n in names if n not in ('S007', 'S014', 'S021')]   # S007, S014 and S021 are the extra mini-game stages (no TIME_LIMIT sections): not ported (ASSUMPTIONS A104)
+run(os.path.join(T, 'export_play.py'), APP, DATA, *play)
+run(os.path.join(T, 'export_names.py'), APP, DATA, *play)
 run(os.path.join(T, 'export_core.py'), APP, DATA)
 run(os.path.join(T, 'export_ouji.py'), APP, DATA)
 run(os.path.join(T, 'export_ui.py'), APP, os.path.join(WEB, 'ui'))

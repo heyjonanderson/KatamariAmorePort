@@ -9,6 +9,7 @@
   const DASH_DURATION = 240, DASH_FORBID = 240;   // frames, from the same table
   // KPARAM, read out of the binary (tools/kparam.json, ASSUMPTIONS A71). Only the ones the sim uses are here
   const KP = { registance: 0.0352, moveTurnRegist: 0.1234, getRatio: 0.1, crumbleRatio: 0.03, crumbleDepth: 5, crumbleAngle: 0.28, crumbleSpeedRatio: 0.98, convergeRatio: 0.015, halfSpeed: 0.4, tilt1: 0.29, tilt2: 0.99, brakeSpeedRatio: 0.45 };
+  const WALL_NY = Math.cos(0.74 * Math.PI / 2), FLAT_NY = Math.cos(0.0453 * Math.PI / 2);   // KPARAM f32WallAngle and f32FlatAngle, times 90 degrees (A103): a face with normal.y (up) at or under WALL_NY is a wall, at or over FLAT_NY it is flat ground
   const BRAKE_COS = Math.cos(0.334 * Math.PI / 2);   // KPARAM f32BrakeAngle 0.334 * 90 degrees
   const DRAG = KP.registance;        // A71: drag per frame as a fraction of velocity (the engine subtracts v * Registance along the motion)
   // MonoHit.cppi gYm_MonoHitSetInfo: catch diameter (mm) from box volume * volume ratio / GetRatio, as a sphere
@@ -95,7 +96,7 @@
     const dn = 1/(va+vb+vc), v = vb*dn, w = vc*dn; return [ax+abx*v+acx*w, ay+aby*v+acy*w, az+abz*v+acz*w];
   }
   // push the ball out of steep collision triangles, horizontally. Returns the push directions used (unit xz) so velocity can be cut
-  // Sloped faces (0.7 <= |ny| < 0.97, ramps) are pushed out of in 3D from above so the ball rides up them (P19). Sets S.rampLift when it lifted the ball.
+  // Sloped faces (WALL_NY < |ny| < FLAT_NY, ramps) are pushed out of in 3D from above so the ball rides up them (P19). Sets S.rampLift when it lifted the ball.
   function hitWalls(S, R, steepOnly, riser) {
     const H = S.hit, out = []; S.rampLift = false; if (!H) return out;
     for (let it = 0; it < 3; it++) {
@@ -104,8 +105,8 @@
         let a = H.cells.get(cx * 100003 + cz); if (H.big.length) a = a ? a.concat(H.big) : H.big; if (!a) continue;
         for (const t of a) {
           if (seen.has(t)) continue; seen.add(t); if (S.erased && H.kind && S.erased[H.kind[t]]) continue;
-          if (Math.abs(H.ny[t]) >= 0.7) {
-            if (steepOnly || Math.abs(H.ny[t]) >= 0.97) continue;
+          if (Math.abs(H.ny[t]) > WALL_NY) {
+            if (steepOnly || Math.abs(H.ny[t]) >= FLAT_NY) continue;
             const o = t * 9, c = closestOnTri(T, o, S.pos[0], S.pos[1], S.pos[2]), dx = S.pos[0] - c[0], dy = S.pos[1] - c[1], dz = S.pos[2] - c[2], d2 = dx*dx + dy*dy + dz*dz;
             if (d2 >= R * R || d2 < 1e-10 || dy < -0.05) continue;                // ball must be on the upper side
             const d = Math.sqrt(d2), m = R - d; S.pos[0] += dx / d * m; S.pos[1] += dy / d * m; S.pos[2] += dz / d * m; if (dy > 0) S.rampLift = true; moved = true; continue;
@@ -154,7 +155,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
@@ -298,6 +299,7 @@
   // The KPARAM values are read from the binary (A71). Speeds are relative to f32ScaleMaxSpeed = the table speed (not the dash speed)
   // MONO_PARAM (gsMonoParam, 13 floats filled by the init at FUN_00018xxx, global 0x98a14): field 0 CrumbleSpdRatio 1.63 (throw speed; not the 0.98 of KPARAM), field 7 KataCrashSpdRatio 2.9 (A100)
   const MP = { crumbleSpd: 1.63, crashSpd: 2.9, crashCap: 1.3 };
+  const REFL = 0.55;   // f32Reflection: StageInfo's min and max size ratio are both 0.55 (FUN_00023f18 sets 100, 200, 0.55, 0.55; read by FUN_0001cf74, A103)
   const CR = { angle: KP.crumbleAngle, spd: KP.crumbleSpeedRatio, vol: KP.crumbleRatio, depth: KP.crumbleDepth, cosA: Math.cos(75 * Math.PI / 180), sinA: Math.sin(75 * Math.PI / 180), cool: 15, hitOff: 10, conv: KP.convergeRatio, convMin: 0.5, flyMax: 240 };   // angle, spd, vol, depth, conv are exact (A71); the rest is staging
   // speed power x angle power of one hit: ground type of sGetSpeedRatio ((v/vmax - 0.25) / 0.25) times (acos(move . wall) - 90 deg) / 90 deg
   function impactPower(vx, vz, nx, nz, vIn, vmax) {
@@ -392,9 +394,10 @@
     S.input = { L: inp.L, R: inp.R, turn: st.turn, power: st.power };
     // dash: up to DASH_DURATION frames, then DASH_FORBID frames of cooldown (PLACEHOLDER: the real dash is a swipe gesture, see P11)
     if (S.dashCool > 0) S.dashCool--;
-    const wantDash = !!inp.dash && st.dir === 1 && S.dashCool === 0;
+    if (!inp.dash) S.dashLock = false;
+    const wantDash = !!inp.dash && !S.dashLock && st.dir === 1 && S.dashCool === 0;
     if (wantDash) { S.dashT++; if (S.dashT > DASH_DURATION) { S.dashT = 0; S.dashCool = DASH_FORBID; } } else S.dashT = 0;
-    S.dash = wantDash && S.dashCool === 0;
+    S.dash = wantDash && S.dashCool === 0; if (S.crushCool > 0) S.crushCool--;
     // acceleration along the facing direction, capped at the table speed (sControl)
     const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
     let acc = 0, ratio = 0, dir = S.flipT > 0 ? 0 : st.dir, power = st.power;
@@ -403,7 +406,8 @@
     else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
     const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
-    if (dir !== 0) {
+    if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
+    else if (dir !== 0) {
       let ix = fx * dir, iz = fz * dir;
       // sCheckBreakInput: the input has to point within BrakeAngle (30 degrees) of straight against the motion. A brake starts only above BrakeSpeedRatio (45%)
       // of the max speed for the direction the ball is travelling relative to the prince (front, back or side), and then holds until the input stops opposing
@@ -430,13 +434,23 @@
     if (cw.on && cw.top) { dx = 0; dz = 0; }                                          // at the top the move is not added (sControl)
     // wall contacts this step, one entry per distinct normal (u16HitCount[1] counts wall faces; A98: flat walls made of many triangles count once)
     const walls = [], addWall = (nx, nz, o) => { for (const w of walls) if (w.n[0] * nx + w.n[1] * nz > 0.99) { if (o && !w.o) w.o = o; return; } walls.push({ n: [nx, nz], o: o || null }); };
-    const wallAt = (x, z) => { const g = supportAt(S, x, z, bottom + 6 * R, bottom + 6 * R); return g !== null && g > bottom; };   // higher ground ahead is a wall, no ground at all is an edge
+    const topAt = (x, z) => supportAt(S, x, z, bottom + 6 * R, bottom + 6 * R);
+    const wallAt = (x, z) => { const g = topAt(x, z); return g !== null && g > bottom; };   // higher ground ahead is a wall, no ground at all is an edge
+    // outward normal (toward the ball) of the obstacle that stopped a move toward (px, pz): minus the horizontal gradient of the highest surface around that point, so a slanted wall gives a slanted normal.
+    // Falls back to straight back along the move when the surface is flat there (A103)
+    const blockN = (px, pz, mx, mz) => {
+      const e = Math.max(R * 0.3, 0.5), h = (x, z) => { const g = topAt(x, z); return g === null ? bottom - 10 : g; };
+      let gx = h(px + e, pz) - h(px - e, pz), gz = h(px, pz + e) - h(px, pz - e); const gl = Math.hypot(gx, gz);
+      if (gl > 1e-6) { gx = -gx / gl; gz = -gz / gl; if (gx * mx + gz * mz < 0) return [gx, gz]; }
+      const ml = Math.hypot(mx, mz) || 1; return [-mx / ml, -mz / ml];
+    };
+    const addBlock = (mx, mz) => { if (!(mx || mz) || !wallAt(S.pos[0] + mx, S.pos[2] + mz)) return; const n = blockN(S.pos[0] + mx, S.pos[2] + mz, mx, mz); addWall(n[0], n[1], null); };
     if (dx || dz) {
       const nx = S.pos[0] + dx, nz = S.pos[2] + dz;
       if (ok(nx, nz)) { S.pos[0] = nx; S.pos[2] = nz; mx = dx; mz = dz; }
-      else if (ok(S.pos[0] + dx, S.pos[2])) { S.pos[0] += dx; mx = dx; vz *= 0.3; if (dz && wallAt(S.pos[0], S.pos[2] + dz)) addWall(0, -Math.sign(dz)); }
-      else if (ok(S.pos[0], S.pos[2] + dz)) { S.pos[2] += dz; mz = dz; vx *= 0.3; if (dx && wallAt(S.pos[0] + dx, S.pos[2])) addWall(-Math.sign(dx), 0); }
-      else { vx *= 0.3; vz *= 0.3; if (dx && wallAt(S.pos[0] + dx, S.pos[2])) addWall(-Math.sign(dx), 0); if (dz && wallAt(S.pos[0], S.pos[2] + dz)) addWall(0, -Math.sign(dz)); }
+      else if (ok(S.pos[0] + dx, S.pos[2])) { S.pos[0] += dx; mx = dx; vz *= 0.3; addBlock(0, dz); }
+      else if (ok(S.pos[0], S.pos[2] + dz)) { S.pos[2] += dz; mz = dz; vx *= 0.3; addBlock(dx, 0); }
+      else { vx *= 0.3; vz *= 0.3; addBlock(dx, 0); addBlock(0, dz); }
       moved = Math.hypot(mx, mz);
     }
     // solid objects: anything too big to pick up is a box (P8). Low ones are rolled over (P9)
@@ -492,6 +506,22 @@
             if (now > reach) { up -= now - reach; cw.top = true; cw.topT = 0; }
             S.pos[1] += up;
           } else { cw.top = true; cw.topT = 1; }
+        }
+      }
+    }
+    // wall bounce (sReflection, A103): hitting a wall head on or at a slant, with no climb starting, throws the ball back along the mirrored direction at 55% of its speed on the next frame
+    if (!cw.on && !cwWasOn && walls.length && vIn > 1e-6 && !S.noReflect) {
+      let sx = 0, sz = 0; for (const w of walls) { sx += w.n[0]; sz += w.n[1]; }
+      const sl = Math.hypot(sx, sz);
+      if (sl > 1e-6) {
+        const nx = sx / sl, nz = sz / sl, ux = vx0 / vIn, uz = vz0 / vIn, inner = ux * nx + uz * nz;
+        if (inner < 0) {
+          const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2);
+          if (refp > 0) {
+            S.reflV = [(ux - 2 * inner * nx) * REFL * vIn, (uz - 2 * inner * nz) * REFL * vIn];
+            S.dash = false; S.dashT = 0; S.dashLock = true;                                  // gYm_OujiDashCancel: the dash needs a new press
+            if (Math.min(1, vIn / vmax) > 0.3 && refp > 0.3 && !(S.crushCool > 0)) { S.events.push({ type: 'crush', wall: true }); S.crushCool = 8; }   // my 8 frame gap so a ball ground against a wall does not stutter the sound   // reqCrush when speed ratio and angle power both pass 0.3
+          }
         }
       }
     }

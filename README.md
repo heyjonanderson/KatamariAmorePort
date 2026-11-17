@@ -30,7 +30,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 ## Where it stands
 
-**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
+**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, wall angles and the wall bounce (A103), per-stage music and catch sounds (A50, A104), text in six languages, the ball model, stage data, and sounds.
 
 **Still mine:** camera wall avoidance, which sound plays while objects act, menu and intro staging, and touch controls.
 
@@ -54,7 +54,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Catch size and growth pace** (A78). Catch sizes come from the engine formula with each model's stored box. Growth in the John's Room reference video (6 cm at 30 s, 24 cm at 100 s, 49 cm at 180 s, 124 cm at the end) matches the shape of the data. My bot is slower than that player and cannot clear stages 2 and 4 to 6 in time, so someone needs to judge the pace.
 - **Speed and brake feel** (A27, A71, A75). Drag, stick curve, braking, and acceleration use the real numbers. Check rolling, steering at speed, and stopping. Keyboard and touch push strength is my choice.
 - **Crumble** (A65, A80). Dashing head-on into a wall knocks the newest objects off. Check that they pop up and not down.
-- **Stages 2 to 6** (A49, A59). Only the bot has cleared them. Look for bad collision, stuck spots, wrong goal sizes, and animals walking at the wrong pace.
+- **Stages 2 to 6, and all of packs 2 and 3** (A49, A59, A104). Only the bot has cleared some of them, and the pack 2 and 3 stages (Time Trip, Rolling Whopper) have never been played by a person. They are flagged "untested" on the stage select. Check the target sizes, the music and the catch sounds on each. Look for bad collision, stuck spots, wrong goal sizes, and animals walking at the wrong pace.
 - **Ball growth curve** (A74). A tester says diameter is "really the square root of the real value". The code takes the cube root of volume. Needs a concrete example.
 - **Sound mapping** (A99, A101, P23). Pickup, catch, crumble, crush, landing, dash, spin, brake, and U-turn sounds now follow the binary but have not been heard. A few ids are still unmapped (A101), and nothing plays for rolling.
 - **Phone play** (P11, C8). The stick, buttons, pause menu, and bug report box have never run on a real phone.
@@ -62,11 +62,12 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Ready to build
 
-- **Stage packs 2 and 3** (A44). The app holds 21 stages and only S001 to S006 are exported.
 - **Records, shop, and album screens** (A55). The data files ship with the app.
-- **Rest of the physics table** (A71, A76). Wall and flat-ground angles, fly and landing times, display scale growth, and what a back push does.
+- **Rest of the physics table** (A71, A76). Landing bounce, fly and landing times, display scale growth, and what a back push does.
+- **Camera leftovers** (A102). Wall avoidance, the zoom echo effect when the camera steps, and the shrunk camera flag.
+- **Bot runs on the new stages.** Run `node tests/bot2.js S008` and so on for packs 2 and 3.
+- **Intro stories of packs 2 and 3** (A106). The text plays over a plain room picture.
 - **Test `tools/build_all.py` on a clean folder** (C4).
-- **I Love Katamari** as a separate project, later.
 
 ### Blocked on data that is only in the binary
 
@@ -85,7 +86,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Each mode loads its own object layout from the stage files (A82)
 - Prince U-turn length and arc from the binary, and his distance behind the ball from the speed table (A89)
 - Real drag, stick curve, brake rule, and move-turn
-- Stages 2 to 6 with targets, music, and stair handling
+- Stages 2 to 6 with targets, music, and stair handling, and the 12 stages of the Time Trip and Rolling Whopper packs (data, music, catch sounds, King text)
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos
 - Path followers (bus, animals, cars, UFO) use the engine's B-spline and look-at rotation read from the binary (A35, A36, A96)
 - The end of a run as the original does it: pause menu questions, Eternal can be finished, the King's goodbye before the result, the 1 minute line, and the end whistle, 30 second tick and result sounds (A93, A94)
@@ -99,5 +100,5 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 - Esc, P, or the Pause button opens the pause menu. "Bug report" copies the stage, mode, time, size, position, and browser. Paste it into a message and say what went wrong.
 - "Catch size" in the pause menu switches between the engine formula (default) and the old guess (A48, A73, A78).
-- Stages 2 to 6 are flagged "rough" on the stage select. Time limits, Exact Size targets and the King's result rules now come from the original's data (A90 to A92).
+- Stage select now starts with a pack picker. Stages 2 to 6 of the first pack are flagged "rough", the other packs "untested". Time limits, Exact Size targets and the King's result rules now come from the original's data (A90 to A92).
 - Best times and sizes are saved in your browser only.

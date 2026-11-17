@@ -5,7 +5,8 @@ const $ = id => document.getElementById(id);
 const canvas = $('c');
 const gl = canvas.getContext('webgl', { antialias: true, alpha: false });
 const qs = new URLSearchParams(location.search);
-const STAGE = qs.get('stage') || 'S001', MODE = qs.get('mode') || 'story';   // story: catch the target; timeattack: biggest in the time limit; eternal: no limit
+const STAGE = qs.get('stage') || 'S001', MODE = qs.get('mode') || 'story';
+const STAGE_N = parseInt(STAGE.slice(1), 10), PACK = STAGE_N <= 7 ? 1 : STAGE_N <= 14 ? 2 : 3, LOCAL = (STAGE_N - 1) % 7;   // 7 stage slots per pack: the sixth is the mini-game extra (FUN_00041520: pack digit, stage mod 7)   // story: catch the target; timeattack: biggest in the time limit; eternal: no limit
 if (!qs.has('stage') && location.replace) location.replace('menu.html');
 const G = { err: [], ready: false, S: null, frames: 0 };
 window.__kg = G;   // test hook
@@ -133,16 +134,17 @@ let last_dt = 0.016, acc = 0, last = 0, prevPos = [0,0,0], prevYaw = 0, lost = f
 const UI = {};                                // HUD images
 
 
-// CATCH_SE = [2, 0, n, 0, every]: n is the catchSeNo, every = repeat interval in frames. requestMonoSe (FUN_00045d88) plays the sound id found in a table at 0x89260,
-// four entries per stage pack, indexed by n: pack 0 = [87, 88, none, none], pack 1 = [89, 90], pack 2 = [91, 92], pack 3 = [93, 94, 95]. Ids 87 and up are KD2_SE_mono_01 and up (id - 86) (A53, A99)
-const CATCH_SE_PACKS = [[1, 2, 0, 0], [3, 4, 0, 0], [5, 6, 0, 0], [7, 8, 9, 0]], STAGE_PACK = 0; let activeCatch = null, paused = false;   // S001 to S006 are pack 0. 0 = no sound
+// CATCH_SE = [2, 0, n, 0, every]: n is the catchSeNo, every = repeat interval in frames. requestMonoSe (FUN_00045d88) plays the sound id found in a table at 0x89260:
+// one row of four ids per STAGE (global stage index 0 to 20, so S007, S014 and S021 are empty rows), indexed by n. Id 87 and up is KD2_SE_mono_01 and up (id - 86) (A53, A99, A104)
+const catchSeFile = (stage, n) => { const N = parseInt(stage.slice(1), 10), row = N <= 6 ? [[1, 2], [3, 4], [5, 6], [7, 8, 9], [10, 11], [12, 13]][N - 1] : N >= 8 && N <= 13 ? [14 + 2 * (N - 8), 15 + 2 * (N - 8)] : N >= 15 && N <= 20 ? [26 + 2 * (N - 15), 27 + 2 * (N - 15)] : []; return row[n] || 0; };   // 0 = no sound
+let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
   S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST0' + (parseInt(STAGE.slice(1), 10) - 1)); ouji = { pat: 0, t: 0 };
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0')); ouji = { pat: 0, t: 0 };
   { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
@@ -378,7 +380,7 @@ function showResult() {
   resShown = true; const KT = window.KText; if (!KT) return; saveRecord();
   const elapsed = S.frame / KSim.FPS, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) }, mm = Math.floor(S.diam * 10 + 1e-6), mis = play.mis, par = (mis.time_limit_n || [])[0];
   let names;
-  if (MODE === 'story') names = S.won ? ['STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
+  if (MODE === 'story') names = S.won ? [PACK === 2 && LOCAL === 0 ? '=STORY_RES002' : 'STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
   else if (MODE === 'exact') { const e = exactErr(); names = [e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
   else if (MODE === 'eternal') names = ['ETER_RES'];
   else names = ['TIME_RES01', mm < mis.ta_goal_mm ? 'TIME_RES02' : 'TIME_RES03'];   // time attack: under the stage's size threshold or not
@@ -389,7 +391,7 @@ function showResult() {
   if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done, i => { if (S.won && i === endN) KSnd.se('KD_SE_res_00'); });   // success: res_00 once the end dialog is over (A94)
   failSnd = !S.won; if (failSnd) { KSnd.se('KD_SE_over_01'); (function again() { if (!failSnd) return; setTimeout(() => { if (!failSnd) return; KSnd.se('KD_SE_over_00' + (failN++ % 2 ? '_2' : '')); again(); }, (KSim.FPS + Math.floor(Math.random() * 4 * KSim.FPS)) / KSim.FPS * 1000); })(); }   // failure: over_01, then over_00 / over_00_2 alternating every 1 to 5 s (FUN_0003342c, A94)
 }
-$('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclick = () => { failSnd = false; location.href = 'menu.html?screen=stage&mode=' + MODE; };
+$('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclick = () => { failSnd = false; location.href = 'menu.html?screen=stage&pack=' + PACK + '&mode=' + MODE; };
 if (window.KText) KText.fit($('rbox'));
 
 // ---- dust kicked up by the ball (GiFx03, small soft puffs) and a "!" over the prince when things fall off (GiHAND is an exclamation mark, not a hand). Original sprites, my timing (A66) ----
@@ -473,7 +475,7 @@ function frame(now) {
       if (ev.type === 'pickup') gotPick = true;
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
-      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = (CATCH_SE_PACKS[STAGE_PACK][cs[2]] || 0); activeCatch = { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
+      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = catchSeFile(STAGE, cs[2]); activeCatch = { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
       else if (ev.type === 'crush') KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_03' : 'KD_SE_game_04');   // reqCrush (FUN_00045cb8): id 9 under 1 m, id 10 from 1 m (A99, A100)
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
       else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
@@ -501,7 +503,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=30`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=30`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=31`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=31`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
@@ -530,7 +532,7 @@ function reportText() {
 }
 $('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false);
 // Restart, quit and the two ways of ending a run ask the question from the original's PAUSE_MENU strings first: 0 exit to the menu, 1 exact size, 2 eternal, 3 restart (A93). Second tap = yes. The yes/no buttons themselves are mine
-const CONFIRMS = [['pMenu', 0, 'Back to stages', () => { location.href = 'menu.html?screen=stage&mode=' + MODE; }], ['pRestart', 3, 'Restart', () => { setPause(false); restartUI(); }],
+const CONFIRMS = [['pMenu', 0, 'Back to stages', () => { location.href = 'menu.html?screen=stage&pack=' + PACK + '&mode=' + MODE; }], ['pRestart', 3, 'Restart', () => { setPause(false); restartUI(); }],
   ['pStop', 1, 'Stop with this size', () => { paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }], ['pQuit', 2, 'Finish Eternal mode', () => { paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }]];
 let armed = null;
 function resetConfirms() { armed = null; for (const [id, , label] of CONFIRMS) $(id).textContent = label; $('pNote').textContent = ''; }
