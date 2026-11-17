@@ -376,14 +376,14 @@ $('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclic
 if (window.KText) KText.fit($('rbox'));
 
 // ---- dust kicked up by the ball (GiFx03, small soft puffs) and a "!" over the prince when things fall off (GiHAND is an exclamation mark, not a hand). Original sprites, my timing (A66) ----
-const puffs = []; let bang = 0, airT = 0;
+const puffs = []; let bang = 0, airT = 0, prevDash = false, dashSndAt = 0;
 function addPuff(x, y, z, vx, vy, vz, size, life) { if (puffs.length < 90) puffs.push({ p: [x, y, z], v: [vx, vy, vz], s: size, t0: performance.now(), life }); }
 function burst(n) { const R = KSim.radius(S); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283; addPuff(S.pos[0] + Math.cos(a) * R * 0.8, S.pos[1] - R * 0.9, S.pos[2] + Math.sin(a) * R * 0.8, Math.cos(a) * R * 1.2, R * 0.5 + Math.random() * R * 0.4, Math.sin(a) * R * 1.2, R * (0.35 + Math.random() * 0.25), 500 + Math.random() * 300); } }
 function spawnDust(over) {
   if (!S || over) return; const R = KSim.radius(S), sp = S.speed, vmax = KSim.tableParams(S).speed;
   if (S.cw && S.cw.on) { airT = 0; return; }                              // wall climb: no landing puff
   if (!S.grounded) { airT++; return; }
-  if (airT > 6) burst(Math.min(14, 4 + airT / 3)); airT = 0;               // landing after a fall or a ramp
+  if (airT > 6) { burst(Math.min(14, 4 + airT / 3)); KSnd.se('KD_SE_game_07'); } airT = 0;   // landing after a fall or a ramp. The engine sets LandingSe when the fly time reaches 0.1 of 70 frames, i.e. 7 frames, and plays id 0x0d = game_07 (A101)
   if (sp < vmax * 0.5) return;
   const k = Math.min(1, (sp / vmax - 0.5) / 1.2) * (S.dash ? 1.6 : 0.8); if (Math.random() > k) return;
   const dx = S.v[0] / sp, dz = S.v[1] / sp, side = (Math.random() - 0.5) * R;
@@ -449,6 +449,10 @@ function frame(now) {
     const over = S.won || lost;
     KSim.step(S, over ? { L: 0, R: 0 } : inp);
     let gotPick = false;
+    { const wheel = d => d < 50 ? 3 : d < 100 ? 4 : d < 500 ? 5 : d < 1000 ? 6 : 7;   // sGetWheelSpinStroke table (A101)
+      if (S.dash && !prevDash) { KSnd.se('KD_SE_game_09'); dashSndAt = S.frame + wheel(S.diam); }   // SND_SE_SPIN (id 0x0f = game_09) when the stroke starts
+      if (dashSndAt && S.frame >= dashSndAt) { dashSndAt = 0; if (S.dash) KSnd.se('KD_SE_game_10'); }   // SND_SE_DASH (id 0x10 = game_10) WheelSpin strokes later
+      prevDash = S.dash; }
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') gotPick = true;
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
@@ -457,7 +461,8 @@ function frame(now) {
       else if (ev.type === 'crush') KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_03' : 'KD_SE_game_04');   // reqCrush (FUN_00045cb8): id 9 under 1 m, id 10 from 1 m (A99, A100)
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
       else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
-      else if (ev.type === 'flip') { KSnd.se('KD_SE_oujih_00'); burst(10); }   // GUESS (A66): the hop sound
+      else if (ev.type === 'flip') { KSnd.se('KD_SE_game_13'); burst(10); }   // Jump180 start plays sound id 0x13 = game_13 (FUN_00025e30, A101)
+      else if (ev.type === 'brake') KSnd.se('KD_SE_game_12');   // SND_SE_BRAKE = id 0x12 = game_12 (FUN_0001ee7c, A101)
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
     if (gotPick) KSnd.se('KD_SE_game_0' + Math.floor(Math.random() * 3));   // MonoHit: when anything was picked up this frame, one of SND_SE_CATCH0..2 (ids 6 to 8 = game_00 to game_02) at random (A99)
@@ -480,7 +485,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=28`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=28`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=29`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=29`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }

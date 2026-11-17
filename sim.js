@@ -408,6 +408,7 @@
         braking = S.brake || oldMag >= KP.brakeSpeedRatio * mspd;
         if (braking && !S.brake) S.brakeEffect = tp['brake' + grp];   // chosen when the brake starts, by which way the ball travels (sCheckBreakInput)
       }
+      if (braking && !S.brake && S.flipT === 0) S.events.push({ type: 'brake' });   // first brake frame, not during the U-turn hop (sCheckBreakInput, A101)
       S.brake = braking;
       if (braking) { const b = S.brakeEffect * power; vx -= vx / oldMag * b; vz -= vz / oldMag * b; }
       else {
