@@ -219,4 +219,4 @@ Last updated: 2026-11-17.
 - 2026-11-17: path followers follow the engine's B-spline and look-at matrix (A35, A36, A96)
 
 - 2026-11-17: placement rotation decoded from the loader (A97, resolves A14, A16); stale rows P12, P24, A19 closed; cache ?v=24
-- 2026-11-17: wall climb built from the engine state machine (A79, A98); P19 step-up cut to 0.5 radius; cache ?v=25
+- 2026-11-17: wall climb built from the engine state machine (A79, A98); P19 step-up cut to 0.5 radius; cache ?v=26
