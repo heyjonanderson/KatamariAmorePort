@@ -55,12 +55,13 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Crumble** (A65, A80). Dashing head-on into a wall knocks the newest objects off. Check that they pop up and not down.
 - **Stages 2 to 6** (A49, A59). Only the bot has cleared them. Look for bad collision, stuck spots, wrong goal sizes, and animals walking at the wrong pace.
 - **Ball growth curve** (A74). A tester says diameter is "really the square root of the real value". The code takes the cube root of volume. Needs a concrete example.
-- **Sound mapping** (A53, P23). None of it has been heard. Nothing plays for rolling, dashing, or the prince.
+- **Sound mapping** (A99, P23). Pickup, catch, and crumble sounds now follow the binary but have not been heard. Landing, rolling, dashing, the prince, and object behavior sounds are not mapped yet.
 - **Phone play** (P11, C8). The stick, buttons, pause menu, and bug report box have never run on a real phone.
 - **Smaller checks:** prince U-turn (A66, A89), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), the "Stop with this size" flow (A57).
 
 ### Ready to build
 
+- **Moving objects knock the ball** (A99). A bus or animal running into the ball pushes it and plays the crush sound in the original. The numbers are in `MonoHit.cppi` (`sMovingMono`). Not in the port.
 - **Stage packs 2 and 3** (A44). The app holds 21 stages and only S001 to S006 are exported.
 - **Records, shop, and album screens** (A55). The data files ship with the app.
 - **Rest of the physics table** (A71, A76). Wall and flat-ground angles, fly and landing times, display scale growth, and what a back push does.

@@ -132,8 +132,9 @@ let last_dt = 0.016, acc = 0, last = 0, prevPos = [0,0,0], prevYaw = 0, lost = f
 const UI = {};                                // HUD images
 
 
-// CATCH_SE = [2, 0, n, 0, every]: n picks one of three sounds, every = repeat interval in frames. The file for each n is a guess from clip lengths (A53)
-const CATCH_SE_MAP = [20, 21, 14]; let activeCatch = null, paused = false;
+// CATCH_SE = [2, 0, n, 0, every]: n is the catchSeNo, every = repeat interval in frames. requestMonoSe (FUN_00045d88) plays the sound id found in a table at 0x89260,
+// four entries per stage pack, indexed by n: pack 0 = [87, 88, none, none], pack 1 = [89, 90], pack 2 = [91, 92], pack 3 = [93, 94, 95]. Ids 87 and up are KD2_SE_mono_01 and up (id - 86) (A53, A99)
+const CATCH_SE_PACKS = [[1, 2, 0, 0], [3, 4, 0, 0], [5, 6, 0, 0], [7, 8, 9, 0]], STAGE_PACK = 0; let activeCatch = null, paused = false;   // S001 to S006 are pack 0. 0 = no sound
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
@@ -447,17 +448,19 @@ function frame(now) {
     prevPos = S.pos.slice(); prevYaw = S.yaw;
     const over = S.won || lost;
     KSim.step(S, over ? { L: 0, R: 0 } : inp);
+    let gotPick = false;
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
-      if (ev.type === 'pickup') { const i = S.info[ev.name], c = i && i.cat; if (c !== undefined) KSnd.se('KD2_SE_mono_' + String(c).padStart(2, '0')); }
+      if (ev.type === 'pickup') gotPick = true;
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
-      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) activeCatch = { se: CATCH_SE_MAP[cs[2]] !== undefined ? CATCH_SE_MAP[cs[2]] : 20, every: cs[4] || 300, next: S.frame }; }   // A53
+      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = (CATCH_SE_PACKS[STAGE_PACK][cs[2]] || 0); activeCatch = { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
-      else if (ev.type === 'crumble') { KSnd.se('KD_SE_game_03'); bang = performance.now(); }   // GUESS (A65): which effect the original uses for crumbling is not known
+      else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
       else if (ev.type === 'flip') { KSnd.se('KD_SE_oujih_00'); burst(10); }   // GUESS (A66): the hop sound
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
-    if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
+    if (gotPick) KSnd.se('KD_SE_game_0' + Math.floor(Math.random() * 3));   // MonoHit: when anything was picked up this frame, one of SND_SE_CATCH0..2 (ids 6 to 8 = game_00 to game_02) at random (A99)
+    if (activeCatch && !over && S.frame >= activeCatch.next) { if (activeCatch.se) KSnd.se('KD2_SE_mono_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (!over && isFinite(S.timeLimit) && S.timeLimit * KSim.FPS - S.frame <= 30 * KSim.FPS && S.frame % KSim.FPS === 0) KSnd.se('KD_SE_game_19');   // last 30 seconds: a 1 s sound (id 0x19, game_19) is restarted whenever it is not playing (A94)
     if (isFinite(S.timeLimit) && S.timeLimit > 60 && S.frame === Math.round((S.timeLimit - 60) * KSim.FPS) && window.KText) toast = { t: 2.5 * KSim.FPS, text: KText.clean(KText.group('REMAIN_1MIN')[0]) };   // "1 minute remaining", from FUN_00024xxx: shown when the remaining-frames counter hits 60 s (A93)
@@ -476,7 +479,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=26`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=26`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=27`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=27`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
