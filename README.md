@@ -46,6 +46,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Stage 1 trophy rotated 90 degrees** (A87). Placement rotation order was fixed from the loader (A97) but that does not touch yaw, so this is still open. It is the one that blocks the way to the next area.
 - **Prince's face is upside down** (A81). The binary and the texture say it is upright, so I need to know where it shows. Screenshot please.
 - **Controls should feel like the reference gameplay** (A83). Ask which part is off: stick feel, camera turning, or dash.
+- **Moving objects knock the ball** (A100). New: a bus or animal running into the ball shoves it, drops your dash, and locks the controls for a third of a second. Also, crumble throws are now faster (1.63 instead of 0.98). Check that neither feels wrong.
 - **Wall climbing** (A79, A98). New, never played. Roll into a wall or a tall object head-on and the ball lifts up it. Check the feel and that it does not catch on things it should not.
 
 ### Needs a human
@@ -61,7 +62,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Ready to build
 
-- **Moving objects knock the ball** (A99). A bus or animal running into the ball pushes it and plays the crush sound in the original. The numbers are in `MonoHit.cppi` (`sMovingMono`). Not in the port.
 - **Stage packs 2 and 3** (A44). The app holds 21 stages and only S001 to S006 are exported.
 - **Records, shop, and album screens** (A55). The data files ship with the app.
 - **Rest of the physics table** (A71, A76). Wall and flat-ground angles, fly and landing times, display scale growth, and what a back push does.
@@ -77,6 +77,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Done
 
+- Moving objects knock the ball and the crumble throw speed uses the right constant (A100)
 - Wall climb from the engine's state machine and the KATA_CLIMB_PARAM numbers (A79, A98)
 - Catch size solved: the engine reads each model's stored bounding box (A78)
 - Speed table columns decoded; brake and acceleration had been swapped (A27)

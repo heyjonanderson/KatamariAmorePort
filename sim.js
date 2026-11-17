@@ -154,7 +154,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
@@ -291,6 +291,8 @@
 
   // ---- crumble and converge (MonoCrumble.cppi, MonoConverge.cppi, KatamariHit sGetSpeedRatio / sGetReflectionRatio) (A65) ----
   // The KPARAM values are read from the binary (A71). Speeds are relative to f32ScaleMaxSpeed = the table speed (not the dash speed)
+  // MONO_PARAM (gsMonoParam, 13 floats filled by the init at FUN_00018xxx, global 0x98a14): field 0 CrumbleSpdRatio 1.63 (throw speed; not the 0.98 of KPARAM), field 7 KataCrashSpdRatio 2.9 (A100)
+  const MP = { crumbleSpd: 1.63, crashSpd: 2.9, crashCap: 1.3 };
   const CR = { angle: KP.crumbleAngle, spd: KP.crumbleSpeedRatio, vol: KP.crumbleRatio, depth: KP.crumbleDepth, cosA: Math.cos(75 * Math.PI / 180), sinA: Math.sin(75 * Math.PI / 180), cool: 15, hitOff: 10, conv: KP.convergeRatio, convMin: 0.5, flyMax: 240 };   // angle, spd, vol, depth, conv are exact (A71); the rest is staging
   // speed power x angle power of one hit: ground type of sGetSpeedRatio ((v/vmax - 0.25) / 0.25) times (acos(move . wall) - 90 deg) / 90 deg
   function impactPower(vx, vz, nx, nz, vIn, vmax) {
@@ -320,7 +322,7 @@
     const wp = mvec(S.R, o.lpos), wr = mmul(S.R, o.lrot);
     o.pos = [S.pos[0] + wp[0], S.pos[1] + wp[1], S.pos[2] + wp[2]]; o.rot = wr; o.ppos = null;
     grow(S, -Math.min(o.addVol, S.volume * 0.5)); S.picked--;
-    const h = Math.hypot(wp[0], wp[2]) || 1, tp = tableParams(S), spd = tp.speed * tp.rF * (0.6 + 0.4 * power) * KP.crumbleSpeedRatio;   // sGetCrumbleVector: _R_BASE 0.6 + _R_RANGE 0.4 * power, times the max forward speed and CrumbleSpeedRatio
+    const h = Math.hypot(wp[0], wp[2]) || 1, tp = tableParams(S), spd = tp.speed * tp.rF * (0.6 + 0.4 * power) * MP.crumbleSpd;   // sGetCrumbleVector: _R_BASE 0.6 + _R_RANGE 0.4 * power, times the max forward speed and MONO_PARAM CrumbleSpdRatio 1.63 (A100, was the KPARAM 0.98)
     o.vel = [wp[0] / h * spd * CR.cosA, spd * CR.sinA, wp[2] / h * spd * CR.cosA];   // launch angle _A_BASE 75 degrees (sign of the source's rotX pair is my reading, A80)
     o.spin = { ax: o.vel[0] > o.vel[2] ? [0, 0, 1] : [1, 0, 0], w: 0.2 };   // gNk_StartMonoForceMove: spin 0.2 rad per frame about Z when vx > vz, else X
     o.state = 'fly'; o.flyT = 0; o.hitOff = S.frame + CR.hitOff; o.crumbleVol = 0; o.path = null;
@@ -362,13 +364,14 @@
 
   function step(S, input) {
     S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
-    const inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
+    let inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
     const cw = S.cw, cwWasOn = cw.on, stepW = cw.on ? 0.05 : stepUp, climbW = cw.on ? 0.05 : climb;   // while climbing the ball has to get fully above a ledge: no step-up allowance
      if (cw.forbid > 0) cw.forbid--;                    // sUpdateTime
     const cwOff = () => { if (cw.on) { if (cw.eff <= 0) { cw.forbid = CW.forbid; } else { cw.eff--; return; } } cw.on = false; cw.top = false; cw.startY = 0; cw.topT = 0; };   // gYm_KatamariDisableClimbWall
     // lumps lift the ball: the surface point that faces down decides how high the centre rides. Eased so it does not jitter (A64)
     S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
+    if (S.ctrlOff > 0) { S.ctrlOff--; inp = { L: 0, R: 0, dash: false, flip: false }; }   // OujiControlDisableTime: no prince input for a few frames after a crush (A100)
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
     const st = readSticks(inp.L, inp.R);
     // The two-stick average power drops when you steer (one stick lower), which with the 0.4 plateau of the speed curve made steering crawl. The original's one-stick path (Ctrl4 combined stick) has no such drop, so single-stick and keyboard input pass their own push strength (A75)
@@ -438,6 +441,16 @@
       if (Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) > R + o.maxlen) continue;
       const bc = boxClosest(o, S.pos); if (bc.dist >= R || bc.dist < 1e-6) continue;
       const nx = S.pos[0] - bc.p[0], nz = S.pos[2] - bc.p[2], hl = Math.hypot(nx, nz); if (hl < 1e-6) continue;
+      if (o.path && o.ppos) {                                                     // sMovingMono: a moving object that runs into the ball knocks it along its move direction (A100)
+        const mvx = o.pos[0] - o.ppos[0], mvz = o.pos[2] - o.ppos[2], ml = Math.hypot(mvx, mvz);
+        if (ml > 1e-9) {
+          const mnx = mvx / ml, mnz = mvz / ml, kx = S.pos[0] - o.pos[0], kz = S.pos[2] - o.pos[2], kl = Math.hypot(kx, kz) || 1;
+          if (kx / kl * mnx + kz / kl * mnz > 0) {
+            const sp = Math.min(ml * MP.crashSpd, tp.speed * tp.rD * MP.crashCap);
+            vx = mnx * sp; vz = mnz * sp; S.dash = false; S.dashT = 0; S.ctrlOff = 10; S.events.push({ type: 'crush' });
+          }
+        }
+      }
       const push = (R - bc.dist) / bc.dist, px = S.pos[0] + (S.pos[0] - bc.p[0]) * push, pz = S.pos[2] + (S.pos[2] - bc.p[2]) * push;
       if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl; addWall(ux, uz, o); const vn = vx * ux + vz * uz; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, ux, uz, vIn, vmax)); vx -= vn * ux; vz -= vn * uz; } }
     }
