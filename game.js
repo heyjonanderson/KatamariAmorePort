@@ -59,6 +59,7 @@ const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
 // ---- settings (A67): lighting and texture filtering, kept in localStorage. The original's own values are not in the data, so these are choices, not a copy ----
 // Back-face culling (A8, A117): the engine enables GL_CULL_FACE with glFrontFace(GL_CW) (FUN_0000dd90) and the model data agrees: the signed volume of every closed object is negative, i.e. faces are clockwise seen from outside in data axes. The port mirrors x in the projection (P20), so on screen the front faces turn counter-clockwise: default GL front face
+const FARMODE = new URLSearchParams(location.search).get('far') || 'engine';
 const CULLMODE = new URLSearchParams(location.search).get('cull') || 'ccw';
 const setCull = () => { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);  if (CULLMODE === 'off') gl.disable(gl.CULL_FACE); else { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.frontFace(CULLMODE === 'cw' ? gl.CW : gl.CCW); } };
 const LIGHTS = [['Original', 0.5, 1, 1], ['Soft', 0.55, 0.45, 0], ['Flat', 1, 0, 0], ['Strong', 0.3, 0.7, 0]], FILTERS = ['Smooth', 'Sharp', 'Pixel'], SET = { light: 0, filter: 0 }, ALLTEX = [];
@@ -274,7 +275,7 @@ function draw(alpha) {
     if (t !== null) { const f = t / lb, sw = Math.min(10 + 75 * Math.min(1, Math.max(0, 1 - f)), 85 - e0 * 180 / Math.PI); e = e0 + Math.max(0, sw) * Math.PI / 180; } }
   cam.e = e; cam.L = lb;
   const eye = [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
-  const far = Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
+  const far = FARMODE === 'old' ? Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3) : (play.mis.far || 800);   // The scene camera (the singleton FUN_0002bca8 draws the world with) gets the FIRST near/far pair of GRAPHICS (A52); the second pair goes to another object. Far is fixed per stage, 800 cm in stage 1. ?far=old brings back the longer clip range I used before
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
   gl.useProgram(P); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);

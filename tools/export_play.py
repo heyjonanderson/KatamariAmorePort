@@ -24,7 +24,7 @@ for st in STAGES:
     sp = floats(sec['SPEED_TABLE'][1]); recs = [sp[2+21*k: 23+21*k] for k in range((len(sp)-2)//21)]
     md = sec['MISSION_DATA'][1]; mf = [struct.unpack('>f', md[7+4*k: 11+4*k])[0] for k in range(11)]
     cf = floats(sec['CAMERA_DATA'][1]); cam = [cf[i:i+10] for i in range(0, len(cf) - 9, 10) if cf[i] >= 0]
-    gr = struct.unpack('>4f', sec['GRAPHICS'][1][2:18]) if 'GRAPHICS' in sec else (0.1, 800.0, 1.0, 10000.0)   # S015 and S017 have no GRAPHICS section: S001's two near/far pairs stand in (A104)
+    gr = struct.unpack('>4f', sec['GRAPHICS'][1][2:18]) if 'GRAPHICS' in sec else (0.01, 10000.0, 0.01, 10000.0)   # S015 and S017 have no GRAPHICS section: the Camera keeps its constructor defaults, near 0.01 and far 10000 (FUN_0002a8b8, A52)
     tb = sec['TIME_LIMIT'][1]; tl = list(struct.unpack('>%dI' % struct.unpack('>H', tb[:2])[0], tb[2:]))
     es = sec['ERASE_STOPPER'][1] if 'ERASE_STOPPER' in sec else b'\x00\x00'; en = struct.unpack('>H', es[:2])[0]; ev = list(struct.unpack('>%di' % en, es[2:2+4*en])); stoppers = []
     for k in range(0, len(ev) - 1, 2):
@@ -64,9 +64,19 @@ for st in STAGES:
         info[m['name']] = dict(path=path_info, catch_se=cse, anim=anim, cat=m['cat'], label=names_en[mi] if mi < len(names_en) else m['name'], model=real, special=m['special'], lo=lo, hi=hi, boxvol=w*h*dd, catch_mm=m['f'][0], vol_ratio=m['f'][1], add_ratio=m['f'][2])
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLOC.dat'); objs = []
     inf = [x for x in e if x[1] == 'MP_INF'][0]; ib = d[b+inf[2]+4: b+inf[2]+inf[3]]; layers = []
-    k = ib.find(b'MP_S00')
-    while k >= 0 and ib[k:k+4] == b'MP_S' and len(layers) < 8:
-        layers.append(dict(set=ib[k:k+16].decode().strip(), until=struct.unpack('>f', ib[k+16:k+20])[0])); k += 20
+    # MP_INF: u16 section count, then per section [name16, type byte, u32 offset]. A section is u16 count, then 20-byte records [f32 size cm, name16] up to a size below 0.
+    # Mono::checkMonoAdd (MonoService.cppi) adds the next record's placement set once the ball's diameter in cm reaches its size; the first record (size 0) is the starting set.
+    # Sections are PL_STORY, PL_TIME_ATTACK, PL_JUST_SIZE, PL_ETERNAL (and PL_FREE or PL_GESTURE in two stages), each with its own sizes (A119)
+    by_mode = {}
+    for q in range(struct.unpack('>H', ib[:2])[0]):
+        o_ = 2 + 21 * q; sn = ib[o_:o_+16].decode('latin1').strip(); so = struct.unpack('>I', ib[o_+17:o_+21])[0]; kk = so + 2; recs_ = []
+        while kk + 20 <= len(ib):
+            f_ = struct.unpack('>f', ib[kk:kk+4])[0]; recs_.append((f_, ib[kk+4:kk+20].decode('latin1').strip('\x00 '))); kk += 20
+            if f_ < 0: break
+        recs_ = [r for r in recs_ if r[0] >= 0 and r[1].startswith('MP_')]
+        # layer i opens when the ball reaches the size of record i+1
+        by_mode[sn] = [dict(set=recs_[n_][1], until=(recs_[n_+1][0] if n_ + 1 < len(recs_) else -1.0)) for n_ in range(len(recs_))]
+    layers = by_mode['PL_STORY']; mis['layers_by_mode'] = dict(S=by_mode['PL_STORY'], T=by_mode.get('PL_TIME_ATTACK', layers), J=by_mode.get('PL_JUST_SIZE', layers), E=by_mode.get('PL_ETERNAL', layers))
     mis['layers'] = layers
     sp_ch = [x for x in e if x[1] == 'SPLINE']; mis['splines'] = {}
     if sp_ch:

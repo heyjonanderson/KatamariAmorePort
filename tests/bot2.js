@@ -3,7 +3,7 @@
 const fs = require('fs'), path = require('path'), K = require('../sim.js');
 const stage = process.argv[2] || 'S001', maxF = +(process.argv[3] || 60000), CELLMIN = +(process.argv[4] || 4); let CELL = CELLMIN;
 const play = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', stage, 'play.json'), 'utf8'));
-const S = K.create(play, Object.assign(process.env.NOREFLECT ? { noReflect: true } : {}, process.env.CATCH ? { catchMode: process.env.CATCH } : {}, process.env.SET ? { set: process.env.SET, noTarget: true } : {})); if (process.env.GOAL) S.goal = +process.env.GOAL; for (let i = 0; i < 120; i++) K.step(S, { L: 0, R: 0 });
+const S = K.create(play, Object.assign(process.env.NOREFLECT ? { noReflect: true } : {}, process.env.CATCH ? { catchMode: process.env.CATCH } : {}, process.env.PICK ? { pick: process.env.PICK } : {}, process.env.SET ? { set: process.env.SET, noTarget: true } : {})); if (process.env.GOAL) S.goal = +process.env.GOAL; for (let i = 0; i < 120; i++) K.step(S, { L: 0, R: 0 });
 const key = (i, j) => i * 100000 + j, ang = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 let why = '', plan = null, planFrame = -1e9, picks = 0, log = [];
 function replan() {
@@ -50,6 +50,7 @@ for (let f = 0; f < maxF && !S.won && S.frame < maxF && !(STOPDIAM && S.diam >= 
     inp = { turn: Math.max(-1, Math.min(1, -e * 3)), fwd: Math.abs(e) < 1.0 ? 1 : 0 };
     noTarget = 0;
   } else { noTarget++; inp = { turn: 0.5, fwd: noTarget % 120 > 60 ? 1 : 0 }; /* wander a little: the planner can sit in a cell it thinks is blocked */ if (noTarget > 600) { log.push('no reachable catchable target at frame ' + S.frame + ' diam ' + S.diam.toFixed(2)); break; } }
+  if (process.env.DUMPAT && S.frame === +process.env.DUMPAT) { const R0 = K.radius(S); const under = S.objs.filter(o => o.state === 'map' && Math.abs(o.pos[0] - S.pos[0]) < o.maxlen + R0 && Math.abs(o.pos[2] - S.pos[2]) < o.maxlen + R0).map(o => `${o.n} pos ${o.pos.map(v => v.toFixed(0))} top ${o.top.toFixed(0)} catch ${o.catchMm}`); console.log('DUMP', S.frame, 'pos', S.pos.map(v => v.toFixed(1)), 'R', R0.toFixed(1), 'grounded', S.grounded, 'ground', K.groundAt(S.G, S.pos[0], S.pos[2], S.pos[1]), 'near objs', under.slice(0, 12)); }
   if (process.env.TRACE && S.frame % 300 === 0) console.log(S.frame, 'pos', S.pos.map(v => v.toFixed(0)).join(','), 'diam', S.diam.toFixed(1), 'target', plan.target && plan.target.n + '@' + plan.target.pos.map(v => v.toFixed(0)), 'route', plan.route ? plan.route.length : 0);
   if (INPLOG) INP.push(inp);
   const before = S.picked; K.step(S, inp); if (S.picked > before || S.events.some(e => e.type === 'area')) { picks = S.picked; planFrame = -1e9; if (S.events.some(e => e.type === 'area')) log.push('area event at frame ' + S.frame + ' diam ' + S.diam.toFixed(1)); }

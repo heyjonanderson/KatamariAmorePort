@@ -64,6 +64,7 @@ Built and bot-tested, but only a person can say if it feels right. Ordered so yo
 - **Records and Collection screens, achievement banners** (A114) [S]. New. Stage screen has Records and Collection buttons. Records shows your best per stage and mode on the clipboard; Collection lists what was stuck on the ball when you cleared a story stage. First catch of a pack’s achievement item (CARD, SKULL and so on) shows the original text banner, and the Pac-Man, Tekken or Galaga item the unlock text. Layout of the text is mine; say what looks off.
 - **Camera against walls** (A112) [S]. New. Pressing the ball into a wall or corner now snaps the camera upward at once, up to nearly top-down, at the same distance, instead of sliding in and easing back. Check it looks like the reference videos.
 - **Phone** (P11, C8) [S]. The floating stick, dash and U-turn buttons, pause menu and bug report box have never run on a real phone. Also check landscape, safe areas and that audio starts after the first tap.
+- **Lighting and look against the real game** (A117, A8, B2) [S]. The default lighting is now the engine’s own constants (back faces culled, soft edges on cut-outs). The only inferred part is the sign of the sun direction. If tops of things look too dark or too bright next to the iOS game, say so and it is a one-character flip.
 
 ### Waiting on a tester
 
@@ -98,6 +99,7 @@ The path-planning bot clears a stage in code, with no person. Slow, and it plays
 
 Not in the shipped source files. Some can be pulled out of the compiled binary, which is how the physics table, the hop, the time limits, wall climb and the sound ids were found.
 
+- **Real dash gesture** (A120, P11) [M]. The source shows the dash is a tapping gesture: strokes on the pad (double-tap on one pad, alternating taps on two), a wheel spin first, then the dash, which ends a set time after the last stroke. The timing numbers are in a prince parameter table I have not located in the binary yet. Until then the port keeps a held dash key with stand-in times.
 - **Decode the original album and score layout** (A55, A114) [M]. The Records and Collection screens use the real art but my own text layout. What the album shows per item (pictures, which items count), the score screen rows and the Shop (an in-app purchase page, left out on purpose) are not decoded.
 - **Sound ids with no known trigger** (A101) [S]. Ids 14, 20 and 26 to 29 (game_08, game_14, game_27 to game_30), the lump sound (id 17) and splash (id 28) have no trigger in the port. The new-area sound (game_28) is still my guess.
 - **Path start point** (A37) [S]. Path followers start at the beginning of their curve. The initial position value is assumed zero.
@@ -114,6 +116,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Pickup test copied from the engine’s sCheckHitMono: a short ray from the ball centre toward the object’s origin against its box, with the half-size shortcut (A29); clip range from the first GRAPHICS pair and no fog anywhere (A52); placement sets and growth sizes per game mode from MP_INF (A119); the real dash gesture read from the source (A120)
 - Sweep 3 of the guesses: the engine’s GL state read from the binary (culls back faces, alpha test not-equal-zero with blending, light ambient 0.5 and diffuse 1.0 from (42, -349, -29)) and used as the default lighting (A117); a nibble-order bug that garbled the ball, prince, shadow and some UI textures found and fixed by re-exporting 38 images (A118); A3, A4, A17 verified; only the map’s own models are loaded, S004 re-run: won in 506 s (A22)
 - Ball core drawn at the engine’s display size and never stretched (A111); camera wall avoidance rule read from the binary (A112); back push and the turn constants checked against the source (A113)
 - Zoom-out sizes checked against a tester’s list for all six areas: every size is a row in the stage’s camera table, so nothing to change (A110)

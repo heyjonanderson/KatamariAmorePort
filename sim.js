@@ -154,10 +154,11 @@
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
-      stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
+      stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
       lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
+    S.pickMode = opts.pick || 'engine';   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
     const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
     for (const o of play.objs) {
       if ((o.set || 'S') !== SET) continue;
@@ -207,6 +208,25 @@
     const q = [Math.min(Math.max(l[0], o.lo[0]), o.hi[0]), Math.min(Math.max(l[1], o.lo[1]), o.hi[1]), Math.min(Math.max(l[2], o.lo[2]), o.hi[2])];
     const w = mvec(o.rot, q);
     return { p: [w[0] + o.pos[0], w[1] + o.pos[1], w[2] + o.pos[2]], dist: Math.hypot(l[0] - q[0], l[1] - q[1], l[2] - q[2]) };
+  }
+  // The pickup test of MonoHit.cppi sCheckHitMono (A29). (1) If half the object's smallest box side plus the ball radius reaches the distance to the object's origin, it is a hit.
+  // (2) Otherwise a segment of length f32IbitsuAveLen runs from the ball centre straight towards the object's origin, in the object's own frame, and a hit is when it touches the box
+  // (NHit::hitLineBox, the segment against the box, which is centred on the middle of lo..hi). f32IbitsuAveLen is the mean lump length, which is at least the radius; I use the radius (lumps average out close to it)
+  function engineHit(S, o, v, R) {
+    if (S.pickMode === 'sphere') return boxClosest(o, S.pos).dist <= R;
+    const dist = Math.hypot(v[0], v[1], v[2]);
+    const minHalf = 0.5 * Math.max(0.1, Math.min(o.hi[0] - o.lo[0], o.hi[1] - o.lo[1], o.hi[2] - o.lo[2]));
+    if (minHalf + R >= dist) return true;
+    const Rt = mtr(o.rot), p0 = mvec(Rt, [-v[0], -v[1], -v[2]]), n = [p0[0] / dist, p0[1] / dist, p0[2] / dist];
+    const p1 = [p0[0] - n[0] * R, p0[1] - n[1] * R, p0[2] - n[2] * R];
+    let t0 = 0, t1 = 1;
+    for (let k = 0; k < 3; k++) {
+      const d = p1[k] - p0[k];
+      if (Math.abs(d) < 1e-12) { if (p0[k] < o.lo[k] || p0[k] > o.hi[k]) return false; continue; }
+      let ta = (o.lo[k] - p0[k]) / d, tb = (o.hi[k] - p0[k]) / d; if (ta > tb) { const x = ta; ta = tb; tb = x; }
+      if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) return false;
+    }
+    return true;
   }
   // Support height under (x, z): map floor, or the top of a too-big object the ball can roll up onto (P19: climb limit CLIMB * radius).
   // yMapMax / yObjMax are the highest surface heights the ball may step onto from where it is.
@@ -571,7 +591,7 @@
       if (o.state !== 'map' || cdm < o.catchMm || (o.hitOff && o.hitOff > S.frame)) continue;
       const v = [o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]];
       if (Math.hypot(v[0], v[1], v[2]) > R + o.maxlen) continue;            // broad phase: ball radius + object bounding radius >= distance (gYm_MonoHitCheck)
-      if (boxClosest(o, S.pos).dist > R) continue;                         // ball surface touches the box (PLACEHOLDER P5: stands in for the engine's ray and box test)
+      if (!engineHit(S, o, v, R)) continue;                                 // sCheckHitMono: the engine's pickup test (A29)
       const Rt = mtr(S.R), lp = mvec(Rt, v);                                // relative position kept as it was at pickup, no clamping (gYm_MonoHitSetInfo)
       o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); S.attached.push(o); S.picked++; if (S.info[o.n].ibi) S.ibiList.push(o);
       const add = o.boxvol * o.addRatio * addRatio(S); o.addVol = add; o.crumbleVol = add; if (!o.rotHome) o.rotHome = o.rot; grow(S, add);
@@ -590,6 +610,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
