@@ -71,15 +71,16 @@ let intro = null;
 function demo(next) {
   show('sDemo'); KT.setPack(pack);
   const texts = KT.groupN('STORY_DEMO', [0, 16, 18, 16][pack]).map(s => KT.clean(s));
-  const go = () => { if (intro) { intro.stop(); intro = null; } KSnd.bgm('KD_BGM_00'); try { localStorage.setItem('kam_demo', '1'); } catch (e) {} next(); };
+  const go = () => { if (intro) { intro.stop(); intro = null; } KSnd.bgm('KD_BGM_00'); try { localStorage.setItem(demoKey(), '1'); } catch (e) {} next(); };
   intro = null; KIntro.play({ pack, canvas: $('dCv'), texts, done: go }).then(p => { intro = p; });
   $('dSkip').onclick = () => { if (intro) intro.skip(); else go(); };
 }
-const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catch (e) { return true; } };
+const demoKey = () => pack === 1 ? 'kam_demo' : 'kam_demo' + pack;   // each pack's story plays once before its first Story stage
+const demoSeen = () => { try { return !!localStorage.getItem(demoKey()); } catch (e) { return true; } };
 
 // the King's lines for a stage and mode. [GOAL] is the stage's target (TARGET_ID), [TIME] the mode's time limit from the stage's MIS file
 async function brief(i) {
-  if (mode === 'story' && pack === 1 && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
+  if (mode === 'story' && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES()[i]; KT.setPack(pack); plays = plays || {};
   if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=32`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
