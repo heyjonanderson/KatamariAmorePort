@@ -66,31 +66,14 @@ function stageScreen() {
 }
 
 
-// Opening story (STORY_DEMO1): six pages, each a small staged picture from the OP1 sprites. The original's layout, camera moves and timing are not decoded; this is my staging (A58)
-const OP = n => `url(ui/OP${pack}/${n}.png)`;
-const DEMO1 = [   // layers per page: [kind, image, left, top, w, h, delay]
-  [['bg', 'DemROOM1', 512, 256], ['ch', 'DemChar2']],
-  [['bg', 'DemROOM1', 512, 256], ['ch', 'DemChar1']],
-  [['bg', 'DemROOM1', 512, 256], ['ch', 'DemChar3']],
-  [['bg', 'DemROOM2', 512, 256]],
-  [['bg', 'DemROOM2', 512, 256], ['it', 'DemITM01', 20, 30, 80, 80, 0.2], ['it', 'DemITM07', 380, 40, 80, 80, 0.5], ['it', 'DemITM10', 60, 150, 64, 64, 0.8], ['it', 'DemITMWD', 360, 160, 90, 90, 1.1], ['it', 'DemITM09', 210, 6, 80, 80, 1.4], ['it', 'DemITM04', 120, 100, 64, 64, 1.7], ['it', 'DemITM06', 300, 110, 64, 64, 2.0]],
-  [['bg', 'DemROOM2', 512, 256], ['ch', 'DemChar6'], ['it', 'DemPARTS', 30, 20, 96, 96, 0.5]],
-];
-// Packs 2 and 3 have 25 and 23 text pages with their own sprites (OP2, OP3). Their staging is not decoded; they get a plain room picture behind the text (A106)
-function demoScene(i) {
-  const box = $('dScene'); box.innerHTML = '';
-  for (const L of (pack === 1 ? DEMO1[Math.min(i, DEMO1.length - 1)] : [['bg', 'DemROOM1', 512, 256]])) {
-    const d = document.createElement('div'); d.className = 'l ' + L[0]; d.style.backgroundImage = OP(L[1]);
-    if (L[0] === 'bg') d.style.backgroundSize = L[2] + 'px ' + L[3] + 'px';
-    if (L[0] === 'it') { d.style.left = L[2] + 'px'; d.style.top = L[3] + 'px'; d.style.width = L[4] + 'px'; d.style.height = L[5] + 'px'; d.style.backgroundSize = 'contain'; d.style.animationDelay = L[6] + 's, ' + (L[6] + 0.5) + 's'; }
-    box.appendChild(d);
-  }
-}
+// Opening story: played from the original's script tables by intro.js (data/intro.json, A107). The strings are STORY_DEMO1 to 3 (16, 18 and 16 strings: the last two or so are the lines shown during the ending scroll)
+let intro = null;
 function demo(next) {
-  show('sDemo');
-  const pages = KT.group('STORY_DEMO').map(s => KT.clean(s));
-  const go = () => { if (dlg) dlg.stop(); try { localStorage.setItem('kam_demo', '1'); } catch (e) {} next(); };
-  dlg = KT.dialog($('dDlg'), pages, go, demoScene); $('dSkip').onclick = go;
+  show('sDemo'); KT.setPack(pack);
+  const texts = KT.groupN('STORY_DEMO', [0, 16, 18, 16][pack]).map(s => KT.clean(s));
+  const go = () => { if (intro) { intro.stop(); intro = null; } KSnd.bgm('KD_BGM_00'); try { localStorage.setItem('kam_demo', '1'); } catch (e) {} next(); };
+  intro = null; KIntro.play({ pack, canvas: $('dCv'), texts, done: go }).then(p => { intro = p; });
+  $('dSkip').onclick = () => { if (intro) intro.skip(); else go(); };
 }
 const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catch (e) { return true; } };
 
@@ -98,7 +81,7 @@ const demoSeen = () => { try { return !!localStorage.getItem('kam_demo'); } catc
 async function brief(i) {
   if (mode === 'story' && pack === 1 && i === 0 && !demoSeen() && !qs.get('nodemo')) { demo(() => brief(0)); return; }
   const st = STAGES()[i]; KT.setPack(pack); plays = plays || {};
-  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=31`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
+  if (!plays[st]) { const t = KLoad.begin('Loading stage data', { expect: 1, now: true }); try { plays[st] = JSON.parse(new TextDecoder().decode(await KLoad.fetchBuf(`data/${st}/play.json?v=32`, (d, n) => t.set(d / n)))); } finally { t.end(); } }
   const p = plays[st];
   const goal = KT.group('TARGET_ID')[i] || '', tl = p.mis.time_limit_n || [], v = { goal };
   let pages;

@@ -7,6 +7,8 @@
   const setPack = p => { pack = p; };
   const group = name => { const ex = name[0] === '='; if (ex) name = name.slice(1); let i = ex ? -1 : T.names.findIndex(n => n[0].startsWith(pack > 1 ? name + pack : name)); if (i < 0) i = T.names.findIndex(n => n[0].startsWith(name)); if (i < 0) return [];
     const st = T.names[i][1], nx = i + 1 < T.names.length ? T.names[i + 1][1] : T.strings.length; return T.strings.slice(st, nx).map(s => s.replace(/\0/g, '')); };
+  // the same lookup, but the group is exactly n strings long. The original declares each group's size (FUN_00037dc4), and the opening story's groups are longer than the name table's gaps show (STORY_DEMO1 holds 16 strings, 2 holds 18, 3 holds 16)
+  const groupN = (name, n) => { const ex = name[0] === '='; if (ex) name = name.slice(1); let i = ex ? -1 : T.names.findIndex(m => m[0].startsWith(pack > 1 ? name + pack : name)); if (i < 0) i = T.names.findIndex(m => m[0].startsWith(name)); if (i < 0) return []; const st = T.names[i][1]; return T.strings.slice(st, st + n).map(s => s.replace(/\0/g, '')); };
   // markers in the original text: '&' = wait for a tap, '$' = end of the block, 'F1' = a big-number line, '#word#' = highlighted word
   const clean = s => s.replace(/\n?&\n?\$?/g, '').replace(/\n?\$/g, '').replace(/\nF1\n?/g, '\n').replace(/^F1\n?/, '').replace(/#/g, '').replace(/　/g, ' ').trim();
   const fmtTime = sec => { const m = Math.floor(sec / 60), s = Math.round(sec % 60), a = group('TIME_MIN')[0], b = group('TIME_AND')[0], c = group('TIME_SEC')[0]; return (m ? m + a : '') + (m && s ? b : '') + (s || !m ? s + c : ''); };
@@ -31,5 +33,5 @@
   const nextLang = () => { const c = LANGS[(LANGS.findIndex(x => x[0] === lang) + 1) % LANGS.length][0]; try { localStorage.setItem('kl_lang', c); } catch (e) {} return c; };
   async function load() { T = await (await fetch('data/strings_' + lang + '.json?v=14')).json(); return root.KText; }
   const fmtSize = cm => { const t = Math.floor(cm * 10 + 1e-6), m = Math.floor(t / 1000), c = Math.floor((t % 1000) / 10), mm = t % 10; return m > 0 ? m + 'm' + String(c).padStart(2, '0') + 'cm' + mm + 'mm' : c > 0 ? c + 'cm' + mm + 'mm' : mm + 'mm'; };   // A72
-  root.KText = { load, setPack, LANGS, nextLang, get lang() { return lang; }, group, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
+  root.KText = { load, setPack, LANGS, nextLang, get lang() { return lang; }, group, groupN, clean, fill, pages, fmtTime, fmtSize, dialog, fit };
 })(window);

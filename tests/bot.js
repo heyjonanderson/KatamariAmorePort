@@ -26,7 +26,7 @@ for (let f = 0; f < maxF && !S.won; f++) {
   for (const e of S.events) if (e.type === 'pickup') { picks.push([S.frame, e.name, +S.diam.toFixed(2)]); lastPick = S.frame; }
   if (S.events.some(e => e.type === 'won')) wonAt = S.frame;
   if (!isFinite(S.pos[0] + S.pos[1] + S.pos[2] + S.diam + S.speed)) { nan = true; break; }
-  if (S.diam < lastD - 1e-9) mono = false; lastD = S.diam;
+  if (S.diam < lastD - 1e-9 && !S.events.some(e => e.type === 'crumble')) mono = false; lastD = S.diam;   // the ball may only get smaller when a hit sheds objects (crumble, A65/A103)
   maxSeenSpeed = Math.max(maxSeenSpeed, Math.abs(S.speed));
   const g = K.groundAt(S.G, S.pos[0], S.pos[2], S.pos[1]); if (g === null) offmap++;
   if (f % 30 === 0) { stuck = Math.hypot(S.pos[0] - lastPos[0], S.pos[2] - lastPos[2]) < 0.3 * K.radius(S) && inp.fwd > 0 ? stuck + 30 : 0; lastPos = S.pos.slice(); }

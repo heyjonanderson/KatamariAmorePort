@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=31">
+<link rel="stylesheet" href="ui.css?v=32">
 </head>
 <body>
 <div class="kbox" id="box">
@@ -48,16 +48,16 @@
     <div class="dlg" id="kDlg"><div class="t"></div><div class="n">&#9660;</div></div>
     <div class="small" id="kSkip" style="right:12px;top:10px">Skip</div>
   </div>
-  <!-- opening story: art from OP1 (the original's intro sprites), my own staging -->
+  <!-- opening story: the original's intro sprites and script tables, played by intro.js -->
   <div class="scr" id="sDemo" style="background:#000">
-    <div id="dScene"></div>
-    <div class="dlg" id="dDlg"><div class="t"></div><div class="n">&#9660;</div></div>
+    <canvas id="dCv" width="480" height="320" style="position:absolute;left:0;top:0"></canvas>
     <div class="small" id="dSkip" style="right:12px;top:10px">Skip</div>
   </div>
 </div>
-<script src="load.js?v=31"></script>
-<script src="audio.js?v=31"></script>
-<script src="text.js?v=31"></script>
-<script src="menu.js?v=31"></script>
+<script src="load.js?v=32"></script>
+<script src="audio.js?v=32"></script>
+<script src="text.js?v=32"></script>
+<script src="intro.js?v=32"></script>
+<script src="menu.js?v=32"></script>
 </body>
 </html>

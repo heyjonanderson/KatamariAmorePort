@@ -25,14 +25,15 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 - `viewer.html`: model and stage viewer
 - `sim.js`: rules and physics. `game.js`: rendering and HUD. `text.js` and `menu.js`: interface. `audio.js`: sound
 - `tools/`: Python export scripts. `python3 tools/build_all.py APP_FOLDER` rebuilds `data/` from a decrypted app folder. `tools/kparam.json` is the physics table read from the binary
+- `intro.js`, `data/intro.json`: the opening stories, played from the original's script tables (A107). `tools/export_intro.ghidra.py` dumps them from the binary.
 - `tests/`: Node tests. `node tests/bot2.js S001` plays a stage with a path-planning bot, `node tests/climb.js` checks the wall climb, and `node tests/game_smoke.js` checks the game loads
 - `SPEC.md`: notes on the data formats
 
 ## Where it stands
 
-**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, wall angles and the wall bounce (A103), per-stage music and catch sounds (A50, A104), text in six languages, the ball model, stage data, and sounds.
+**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, wall angles, the wall bounce and the landing bounce (A103, A108), the zoom echo, per-stage music and catch sounds (A50, A104), the three opening stories from the original script tables (A107), text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera wall avoidance, which sound plays while objects act, menu and intro staging, and touch controls.
+**Still mine:** camera wall avoidance, which sound plays while objects act, menu layout and transitions, the intro's text font, and touch controls.
 
 ## Roadmap
 
@@ -56,24 +57,24 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Crumble** (A65, A80). Dashing head-on into a wall knocks the newest objects off. Check that they pop up and not down.
 - **Stages 2 to 6, and all of packs 2 and 3** (A49, A59, A104). Only the bot has cleared some of them, and the pack 2 and 3 stages (Time Trip, Rolling Whopper) have never been played by a person. They are flagged "untested" on the stage select. Check the target sizes, the music and the catch sounds on each. Look for bad collision, stuck spots, wrong goal sizes, and animals walking at the wrong pace.
 - **Ball growth curve** (A74). A tester says diameter is "really the square root of the real value". The code takes the cube root of volume. Needs a concrete example.
-- **Sound mapping** (A99, A101, P23). Pickup, catch, crumble, crush, landing, dash, spin, brake, and U-turn sounds now follow the binary but have not been heard. A few ids are still unmapped (A101), and nothing plays for rolling.
+- **All sound** (A109, A99, A101, P23). Sound was silently broken until 2026-11-17 (a loader bug), so nothing the port plays has ever been heard by anyone. Pickup, catch, crumble, crush, landing, dash, spin, brake, and U-turn sounds follow the binary but need listening to. Also the music in the three opening stories.
+- **Opening stories** (A107). Played from the original's script tables. Compare timing, the text size and the balloon look against the real game if you have a recording. A few ids are still unmapped (A101), and nothing plays for rolling.
 - **Phone play** (P11, C8). The stick, buttons, pause menu, and bug report box have never run on a real phone.
 - **Smaller checks:** prince U-turn (A66, A89), lumps (A64), lighting and texture settings (A67), stage 1 hallway pop-in (A51), the "Stop with this size" flow (A57).
 
 ### Ready to build
 
 - **Records, shop, and album screens** (A55). The data files ship with the app.
-- **Rest of the physics table** (A71, A76). Landing bounce, fly and landing times, display scale growth, and what a back push does.
-- **Camera leftovers** (A102). Wall avoidance, the zoom echo effect when the camera steps, and the shrunk camera flag.
+- **Rest of the physics table** (A71, A76). Fly and landing times, display scale growth, and what a back push does. The landing bounce is done (A108).
+- **Camera wall avoidance** (A102, A108). FUN_000295ec is only partly read; the port keeps my swing-up rule. The zoom echo is done and the shrunk camera flag is dead code in the original.
 - **Bot runs on the new stages.** Run `node tests/bot2.js S008` and so on for packs 2 and 3.
-- **Intro stories of packs 2 and 3** (A106). The text plays over a plain room picture.
 - **Test `tools/build_all.py` on a clean folder** (C4).
 
 ### Blocked on data that is only in the binary
 
-- Camera wall avoidance and the zoom echo (A102)
+- Camera wall avoidance (A102)
 - Catch sound routing (A53)
-- Menu and intro staging (A38 to A41, A58)
+- Menu layout and transitions (A38 to A41)
 - Unused stage fields
 
 ### Done
