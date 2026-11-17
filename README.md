@@ -64,7 +64,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Wall climbing** (A79). Values are read from the binary and the logic is in `KatamariHit.cppi`. The port has a step-up placeholder.
 - **Stage packs 2 and 3** (A44). The app holds 21 stages and only S001 to S006 are exported.
 - **Records, shop, and album screens** (A55). The data files ship with the app.
-- **Finish the language work** (A77). Object names (`MONONAME.dat`), the pause menu, and a few labels are still English.
 - **Rest of the physics table** (A71, A76). Wall and flat-ground angles, fly and landing times, display scale growth, and what a back push does.
 - **Test `tools/build_all.py` on a clean folder** (C4).
 - **I Love Katamari** as a separate project, later.
@@ -87,9 +86,10 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Real drag, stick curve, brake rule, and move-turn
 - Stages 2 to 6 with targets, music, and stair handling
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos
+- The end of a run as the original does it: pause menu questions, Eternal can be finished, the King's goodbye before the result, the 1 minute line, and the end whistle, 30 second tick and result sounds (A93, A94)
 - Time limits, Exact Size targets and tolerances, and the King's result rules, read from the original's data and code (A90 to A92)
 - Exact Size mode with the King's lines, opening story, fall recovery, flip-book animation, and lumpy ball
-- Six languages from the title screen, and size text as `4m02cm8mm`
+- Six languages from the title screen (story text, stage names, object names; the pause menu and a few buttons have no strings in the app and stay English, A95), and size text as `4m02cm8mm`
 - Pause menu with a bug report copy button, lighting, and texture settings
 - Export tools that take arguments, with a `build_all.py` that chains them
 

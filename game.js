@@ -353,7 +353,7 @@ function drawHud() {
     let kx = 0, ky = 0; if (p) { kx = p.x - p.ox; ky = p.y - p.oy; const m = Math.hypot(kx, ky); if (m > PAD_R) { kx *= PAD_R / m; ky *= PAD_R / m; } kx *= 0.6; ky *= 0.6; }
     if (UI.PADC) hx.drawImage(UI.PADC, bx + kx - 32, by + ky - 32, 64, 64); hx.restore(); } }
 }
-let toast = null, resShown = false, dlgRes = null;
+let toast = null, resShown = false, dlgRes = null, failSnd = false, failN = 0;
 
 // End of a run: the King comments in his own words (STRING.dat). The rules below are the original's own (FUN_00041520, A92)
 function showResult() {
@@ -361,15 +361,17 @@ function showResult() {
   const elapsed = S.frame / KSim.FPS, v = { goal: S.targetLabel || '', time: KT.fmtTime(elapsed), size: fmtDiam(S.diam) }, mm = Math.floor(S.diam * 10 + 1e-6), mis = play.mis, par = (mis.time_limit_n || [])[0];
   let names;
   if (MODE === 'story') names = S.won ? ['STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
-  else if (MODE === 'exact') { const e = exactErr(); names = ['SIZE_END', e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
+  else if (MODE === 'exact') { const e = exactErr(); names = [e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
   else if (MODE === 'eternal') names = ['ETER_RES'];
   else names = ['TIME_RES01', mm < mis.ta_goal_mm ? 'TIME_RES02' : 'TIME_RES03'];   // time attack: under the stage's size threshold or not
-  const pages = KT.pages(names, v);
+  if (S.won) names.unshift({ story: 'STORY_END', timeattack: 'TIME_END', exact: 'SIZE_END', eternal: 'ETER_END' }[MODE]);   // the success path (FUN_00033544 > FUN_00033620) plays the mode's own two-line goodbye before the result; the failure path (FUN_0003342c) goes straight to STORY_FAIL (A93)
+  const endN = S.won ? KT.pages([names[0]], v).length : 0, pages = KT.pages(names, v);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
   const done = () => { $('rRetry').style.display = $('rMenu').style.display = 'block'; };
-  if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done);
+  if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done, i => { if (S.won && i === endN) KSnd.se('KD_SE_res_00'); });   // success: res_00 once the end dialog is over (A94)
+  failSnd = !S.won; if (failSnd) { KSnd.se('KD_SE_over_01'); (function again() { if (!failSnd) return; setTimeout(() => { if (!failSnd) return; KSnd.se('KD_SE_over_00' + (failN++ % 2 ? '_2' : '')); again(); }, (KSim.FPS + Math.floor(Math.random() * 4 * KSim.FPS)) / KSim.FPS * 1000); })(); }   // failure: over_01, then over_00 / over_00_2 alternating every 1 to 5 s (FUN_0003342c, A94)
 }
-$('rRetry').onclick = () => restartUI(); $('rMenu').onclick = () => { location.href = 'menu.html?screen=stage&mode=' + MODE; };
+$('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclick = () => { failSnd = false; location.href = 'menu.html?screen=stage&mode=' + MODE; };
 if (window.KText) KText.fit($('rbox'));
 
 // ---- dust kicked up by the ball (GiFx03, small soft puffs) and a "!" over the prince when things fall off (GiHAND is an exclamation mark, not a hand). Original sprites, my timing (A66) ----
@@ -452,12 +454,14 @@ function frame(now) {
       else if (ev.type === 'area') KSnd.se('KD_SE_game_28');
       else if (ev.type === 'crumble') { KSnd.se('KD_SE_game_03'); bang = performance.now(); }   // GUESS (A65): which effect the original uses for crumbling is not known
       else if (ev.type === 'flip') { KSnd.se('KD_SE_oujih_00'); burst(10); }   // GUESS (A66): the hop sound
-      else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); }
+      else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
     if (activeCatch && !over && S.frame >= activeCatch.next) { KSnd.se('KD_SE_game_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
+    if (!over && isFinite(S.timeLimit) && S.timeLimit * KSim.FPS - S.frame <= 30 * KSim.FPS && S.frame % KSim.FPS === 0) KSnd.se('KD_SE_game_19');   // last 30 seconds: a 1 s sound (id 0x19, game_19) is restarted whenever it is not playing (A94)
+    if (isFinite(S.timeLimit) && S.timeLimit > 60 && S.frame === Math.round((S.timeLimit - 60) * KSim.FPS) && window.KText) toast = { t: 2.5 * KSim.FPS, text: KText.clean(KText.group('REMAIN_1MIN')[0]) };   // "1 minute remaining", from FUN_00024xxx: shown when the remaining-frames counter hits 60 s (A93)
     if (S.events.some(e => e.type === 'area')) toast = { t: 4 * KSim.FPS, text: 'New area unlocked' };   // PLACEHOLDER (P21): the original's cue is unknown
-    if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_res_00'); } else { lost = true; KSnd.stopBgm(); KSnd.se('KD_SE_over_00'); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
+    if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); } else { lost = true; KSnd.stopBgm(); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
     if (!over && (Math.abs(inp.L) > 0.2 || Math.abs(inp.R) > 0.2)) { ouji.t += S.dash ? 2 : 1; if (ouji.t >= 4) { ouji.t = 0; ouji.pat = (ouji.pat + 1) % 4; } } else if (ouji.t === 0) ouji.pat = 0;
     spawnDust(over);
@@ -471,7 +475,8 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=22`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); } catch (e) { G.err.push('text ' + e.message); } } task.step(1);
+    play = await (await fetch(`data/${STAGE}/play.json?v=23`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=23`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+         catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
     try { ou = await loadGroup('common', 'ouji', task); } catch (e) { G.err.push('ouji ' + e); }
@@ -487,7 +492,7 @@ function frame(now) {
 // The catch rule is the one open question that changes the stage 1 feel (A48), so testers can flip it here. It reloads the page with ?catch=goal or without it.
 function setPause(on) {
   if (S && (S.won || lost)) on = false;
-  paused = on; $('pStop').style.display = MODE === 'exact' ? 'block' : 'none'; $('pStop').textContent = 'Stop with this size'; stopArmed = false; $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
+  paused = on; $('pStop').style.display = MODE === 'exact' ? 'block' : 'none'; $('pQuit').style.display = MODE === 'eternal' ? 'block' : 'none'; resetConfirms(); $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
   if (on) { const cm = qs.get('catch') === 'f0'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'old guess (first monolist float)' : 'from the engine formula (default)') + ' (tap to switch)'; }
 }
 function reportText() {
@@ -497,8 +502,16 @@ function reportText() {
     'picked: ' + S.picked + '  layer: ' + S.layer + '  pos: ' + S.pos.map(v => v.toFixed(1)).join(', ') + '  target: ' + (S.targetLabel || 'none'),
     'fps ~' + fps + '  window: ' + innerWidth + 'x' + innerHeight + '  touch: ' + ('ontouchstart' in window), 'ua: ' + navigator.userAgent, '', 'what happened: '].join('\n');
 }
-$('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false); $('pRestart').onclick = () => { setPause(false); restartUI(); };
-$('pMenu').onclick = () => { location.href = 'menu.html?screen=stage&mode=' + MODE; };
+$('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false);
+// Restart, quit and the two ways of ending a run ask the question from the original's PAUSE_MENU strings first: 0 exit to the menu, 1 exact size, 2 eternal, 3 restart (A93). Second tap = yes. The yes/no buttons themselves are mine
+const CONFIRMS = [['pMenu', 0, 'Back to stages', () => { location.href = 'menu.html?screen=stage&mode=' + MODE; }], ['pRestart', 3, 'Restart', () => { setPause(false); restartUI(); }],
+  ['pStop', 1, 'Stop with this size', () => { paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }], ['pQuit', 2, 'Finish Eternal mode', () => { paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }]];
+let armed = null;
+function resetConfirms() { armed = null; for (const [id, , label] of CONFIRMS) $(id).textContent = label; $('pNote').textContent = ''; }
+for (const [id, q, label, go] of CONFIRMS) $(id).onclick = () => {
+  if (armed !== id) { resetConfirms(); armed = id; const t = window.KText ? KText.group('PAUSE_MENU')[q] : label + '?'; $(id).textContent = 'Yes: ' + label; $('pNote').textContent = t + '  (tap the button again to confirm)'; return; }
+  go();
+};
 const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.light][0]; $('pTex').textContent = 'Textures: ' + FILTERS[SET.filter]; };
 $('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
 $('pTex').onclick = () => { SET.filter = (SET.filter + 1) % FILTERS.length; saveSet(); applyFilter(); syncSet(); };
@@ -520,9 +533,4 @@ function saveRecord() {
 
 // ---- exact size mode ----
 // Roll to the target size, then "Stop with this size" in the pause menu (the King's own line asks for it). Target and tolerance come from the stage's MISSION_DATA_EXT (A91).
-let stopArmed = false;
 function exactErr() { return Math.abs(Math.floor(S.diam * 10 + 1e-6) - play.mis.exact_mm); }   // whole mm away from the target
-$('pStop').onclick = () => {
-  if (!stopArmed) { stopArmed = true; $('pStop').textContent = (window.KText ? KText.group('PAUSE_MENU')[1] : 'Are you okay with this size?') + ' Tap again for yes'; return; }
-  paused = false; $('pause').style.display = 'none'; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_res_00');
-};
