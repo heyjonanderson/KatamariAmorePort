@@ -87,13 +87,13 @@ def gallery(stage, cols=8, cell=128, yaw=0.7, pitch=0.35, bg=(140, 190, 240)):
 
 
 def euler_view(rx, ry, rz):
-    """logic space (z-mirrored) -> view space: M R_A M = Ry(-ry) Rx(-rx) Rz(rz); angles in degrees"""
+    """file degrees -> view space, decoded from the loader (A97): Sz(-rz) Sy(-ry) Sx(rx)"""
     import math
     def Rx(a): c, s_ = math.cos(a), math.sin(a); return np.array([[1,0,0],[0,c,-s_],[0,s_,c]])
     def Ry(a): c, s_ = math.cos(a), math.sin(a); return np.array([[c,0,s_],[0,1,0],[-s_,0,c]])
     def Rz(a): c, s_ = math.cos(a), math.sin(a); return np.array([[c,-s_,0],[s_,c,0],[0,0,1]])
     d = math.radians
-    return Ry(-d(ry)) @ Rx(-d(rx)) @ Rz(d(rz))
+    return Rz(-d(rz)) @ Ry(-d(ry)) @ Rx(d(rx))
 
 def stage_items(stage, letter='S'):
     import json

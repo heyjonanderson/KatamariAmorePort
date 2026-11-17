@@ -25,8 +25,8 @@
   const ry = a => { const c = Math.cos(a), s = Math.sin(a); return [c,0,s, 0,1,0, -s,0,c]; };
   const rz = a => { const c = Math.cos(a), s = Math.sin(a); return [c,-s,0, s,c,0, 0,0,1]; };
   const D2R = Math.PI / 180;
-  // placement euler in logic space -> view space (A14/A16: order and signs are GUESSES)
-  const eulerView = (x, y, z) => mmul(ry(-y * D2R), mmul(rx(-x * D2R), rz(z * D2R)));
+  // placement euler (file degrees) -> view space. Decoded from the loader (A97): S = Sz(-rz) Sy(-ry) Sx(rx)
+  const eulerView = (x, y, z) => mmul(rz(-z * D2R), mmul(ry(-y * D2R), rx(x * D2R)));
   function axisAngle(ax, ang) {
     const c = Math.cos(ang), s = Math.sin(ang), t = 1 - c, [x, y, z] = ax;
     return [t*x*x+c, t*x*y-s*z, t*x*z+s*y,  t*x*y+s*z, t*y*y+c, t*y*z-s*x,  t*x*z-s*y, t*y*z+s*x, t*z*z+c];
@@ -163,31 +163,34 @@
       S.objs.push({ n: o.n, model: i.model, pos: o.p.slice(), rot: eulerView(o.r[0], o.r[1], o.r[2]), rawRot: o.r, catchMm: cm(i), boxvol: i.boxvol, addRatio: i.add_ratio,
         r: 0.5 * Math.hypot(ext[0], ext[1], ext[2]), halfXZ: 0.5 * Math.max(ext[0], ext[2]), top: o.p[1] + i.hi[1], lo: i.lo, hi: i.hi, maxlen: Math.max(Math.hypot(...i.lo), Math.hypot(...i.hi)), layer: o.layer || 0, state: (o.layer || 0) === 0 ? 'map' : 'hidden', path: (i.path && play.mis.splines && play.mis.splines[i.path.no]) ? { pts: play.mis.splines[i.path.no], speed: i.path.speed, t: 0 } : null });
     }
-    for (const o of S.objs) if (o.path) {                                  // A37: start at the spline point nearest the placed position
-      let bt = 0, bd = 1e18; for (let k = 0; k < 600; k++) { const p = splineAt(o.path.pts, k / 600).pos, d = Math.hypot(p[0] - o.pos[0], p[2] - o.pos[2]); if (d < bd) { bd = d; bt = k / 600; } }
-      o.path.t = bt; const sp = splineAt(o.path.pts, bt); o.pos = sp.pos; o.ppos = sp.pos.slice(); o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]) + PATH_FACE);
-    }
+    for (const o of S.objs) if (o.path) { const sp = splineAt(o.path.pts, 0); o.pos = sp.pos; o.ppos = sp.pos.slice(); o.rot = pathRot(sp.tan, null); }   // tSpline starts at 0 (A96)
     return S;
   }
-  // moving monos (MonoMain.cppi): tSpline += splineSpeed per frame, wraps at 1. The Spline class is not in the sources, so this is a closed
-  // Catmull-Rom through the waypoints with segment = t * count (A35). Local +z of the model points along the travel direction (A36)
+  // Moving monos (MonoMain.cppi): each frame getPos and getRotMat at tSpline, then tSpline += splineSpeed, minus 1 when it passes 1. Spline is a closed uniform
+  // quadratic B-spline read from the binary (FUN_0002a254, FUN_0002a3e4, FUN_0002a178): u = t * n wrapped to [-0.5, n - 0.5), i = int(u + 0.5), position and tangent
+  // are the sums of points i-1, i, i+1 weighted by the kernel F and its derivative at u - (i-1), u - i, u - (i+1). The curve does not pass through the points (A96)
+  const bF = x => { const a = Math.abs(x); return a < 0.5 ? 0.75 - a * a : a < 1.5 ? (4 * a * a - 12 * a + 9) / 8 : 0; };
+  const bD = x => { const a = Math.abs(x); let d = a < 0.5 ? -2 * a : a < 1.5 ? a - 1.5 : 0; return x < 0 ? -d : d; };
   function splineAt(pts, t) {
-    const n = pts.length, u = (t - Math.floor(t)) * n, i = Math.floor(u), f = u - i, P = k => pts[((i + k) % n + n) % n];
-    const p0 = P(-1), p1 = P(0), p2 = P(1), p3 = P(2), f2 = f * f, f3 = f2 * f, pos = [], tan = [];
-    for (let k = 0; k < 3; k++) {
-      pos.push(0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * f + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * f2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * f3));
-      tan.push(0.5 * ((-p0[k] + p2[k]) + 2 * (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * f + 3 * (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * f2));
-    }
+    const n = pts.length; let u = t * n; while (n - 0.5 <= u) u -= n; while (u < -0.5) u += n;
+    const i = Math.trunc(u + 0.5), ip = i - 1 < 0 ? n - 1 : i - 1, inx = i + 1 >= n ? 0 : i + 1, ks = [ip, i, inx], xs = [u - (i - 1), u - i, u - (i + 1)], pos = [0, 0, 0], tan = [0, 0, 0];
+    for (let q = 0; q < 3; q++) for (let k = 0; k < 3; k++) { pos[q] += pts[ks[k]][q] * bF(xs[k]); tan[q] += pts[ks[k]][q] * bD(xs[k]); }
     return { pos, tan };
   }
+  // getRotMat: the model's z axis is minus the tangent (so a model faces away from its travel direction on the +z side), x = -(z cross up), y = (z cross up) cross z, up = (0, 1, 0). Columns here
+  const pathRot = (tan, prev) => {
+    const L = Math.hypot(tan[0], tan[1], tan[2]); if (L < 1e-9) return prev || ry(0);
+    const z = [-tan[0] / L, -tan[1] / L, -tan[2] / L], c = [-z[2], 0, z[0]], cl = Math.hypot(c[0], c[2]); if (cl < 1e-6) return prev || ry(0);
+    const v = [c[0] / cl, 0, c[2] / cl], x = [-v[0], 0, -v[2]], y = [v[1] * z[2] - v[2] * z[1], v[2] * z[0] - v[0] * z[2], v[0] * z[1] - v[1] * z[0]];
+    return [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
+  };
   function moveMonos(S) {
     for (const o of S.objs) {
       if (!o.path || o.state !== 'map') continue;
       o.ppos = o.pos.slice();
-      o.path.t += o.path.speed; if (o.path.t >= 1) o.path.t -= 1;
       const sp = splineAt(o.path.pts, o.path.t);
-      o.pos = sp.pos; o.top = o.pos[1] + o.hi[1];
-      if (Math.hypot(sp.tan[0], sp.tan[2]) > 1e-6) o.rot = ry(Math.atan2(sp.tan[0], sp.tan[2]) + PATH_FACE);
+      o.pos = sp.pos; o.top = o.pos[1] + o.hi[1]; o.rot = pathRot(sp.tan, o.rot);
+      o.path.t += o.path.speed; if (o.path.t > 1) o.path.t -= 1;
     }
   }
   // closest point of an object's oriented bounding box to a world point c. Models are boxed in their own space; world = rot * local + pos
@@ -266,7 +269,6 @@
   // N (IbitsuCheckDepth) and the cone width (LUMP_SHARP) are guesses; the rest follows the source.
   // OUJI_JUMP in the stage data: [frames at the small end, small diameter, frames at the large end, large diameter] = [12, 10, 20, 80.1]. FUN_00025d8c: frames = trunc(f0 + (f2 - f0) * clamp((diam - d0) / (d1 - d0), 0, 1)) (A89)
   const flipFrames = S => { const j = (S.ouji_jump || [12, 10, 20, 80.1]); return Math.trunc(j[0] + (j[2] - j[0]) * Math.max(0, Math.min(1, (S.diam - j[1]) / (j[3] - j[1])))); };
-  const PATH_FACE = Math.PI;   // path followers (bus, animals, cars) drove tail first with local +z along the path; a tester reported it, so they now face the other way (A86)
   const LUMP_DEPTH = 12, LUMP_MAX = 6, LUMP_SHARP = 4, LUMP_CAP = 2.5, LUMP_LIFT_MAX = 0.25;   // the picture shows the full lump, the physics ball rises at most a quarter radius (A64)
   function lumpsOf(S, R) {
     const out = [], L = S.ibiList; if (!L || !L.length) return out;

@@ -8,7 +8,7 @@ const M = { rx(d){const a=d*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[1,0,0
 const play = JSON.parse(fs.readFileSync(path.join(root, 'data/S001/play.json')));
 let worst = 0;
 for (const o of play.objs.slice(0, 300)) {
-  const [rx, ry, rz] = o.r; const V = M.mul(M.ry(-ry), M.mul(M.rx(-rx), M.rz(rz)));
+  const [rx, ry, rz] = o.r; const V = M.mul(M.rz(-rz), M.mul(M.ry(-ry), M.rx(rx)));
   // note: play.json r holds raw logic angles; viewer negates rx, ry itself
   const R3 = K.eulerView(rx, ry, rz);
   for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(V[c*4+r] - R3[r*3+c]));

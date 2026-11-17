@@ -32,7 +32,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 **From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera data rows, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera follow smoothing, which sound plays for what, the bus path curve, menu and intro staging, and touch controls.
+**Still mine:** camera follow smoothing, which sound plays while objects act, menu and intro staging, and touch controls.
 
 ## Roadmap
 
@@ -42,8 +42,8 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 - **Tall objects glitch across the screen** (A84). Rolling up a tall object fills the view and hides the level.
 - **Ball stretches into a tall oval** (A85). Seen at 9.5 cm in a tester screenshot.
-- **Moving objects face backwards** (A86). Path followers now turned 180 degrees as a guess. Check it.
-- **Stage 1 trophy rotated 90 degrees** (A87). It is the one that blocks the way to the next area.
+- **Moving objects** (A35, A36, A86). Path followers now use the engine's own spline and facing rule. Check the bus and animals look right, and that the UFO in stage 5 tilts along its path.
+- **Stage 1 trophy rotated 90 degrees** (A87). Placement rotation order was fixed from the loader (A97) but that does not touch yaw, so this is still open. It is the one that blocks the way to the next area.
 - **Prince's face is upside down** (A81). The binary and the texture say it is upright, so I need to know where it shows. Screenshot please.
 - **Controls should feel like the reference gameplay** (A83). Ask which part is off: stick feel, camera turning, or dash.
 - **Wall climbing** (A79). Also listed under Ready to build.
@@ -72,7 +72,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 - Camera follow code (P10)
 - Catch sound routing (A53)
-- Bus path Spline (A35 to A37)
 - Menu and intro staging (A38 to A41, A58)
 - Unused stage fields
 
@@ -86,6 +85,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - Real drag, stick curve, brake rule, and move-turn
 - Stages 2 to 6 with targets, music, and stair handling
 - Original ball model and textures, timer, item tag, and touch layout from the reference videos
+- Path followers (bus, animals, cars, UFO) use the engine's B-spline and look-at rotation read from the binary (A35, A36, A96)
 - The end of a run as the original does it: pause menu questions, Eternal can be finished, the King's goodbye before the result, the 1 minute line, and the end whistle, 30 second tick and result sounds (A93, A94)
 - Time limits, Exact Size targets and tolerances, and the King's result rules, read from the original's data and code (A90 to A92)
 - Exact Size mode with the King's lines, opening story, fall recovery, flip-book animation, and lumpy ball
