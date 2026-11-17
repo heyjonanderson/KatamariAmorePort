@@ -21,7 +21,10 @@ function replan() {
   const si = Math.round(S.pos[0] / CELL), sj = Math.round(S.pos[2] / CELL), dist = new Map(), par = new Map(), gy = new Map(), q = [[si, sj]];
   dist.set(key(si, sj), 0); gy.set(key(si, sj), S.pos[1] - R);
   for (let h = 0; h < q.length && dist.size < 250000; h++) { const [i, j] = q[h], d = dist.get(key(i, j)), y = gy.get(key(i, j));
-    for (const [di, dj] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) { const ni = i + di, nj = j + dj, k = key(ni, nj); if (dist.has(k)) continue; const g = freeAt(ni * CELL, nj * CELL, y); if (g === null) continue;
+    for (const [di, dj] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) { const ni = i + di, nj = j + dj, k = key(ni, nj); if (dist.has(k)) continue; let g = freeAt(ni * CELL, nj * CELL, y);
+      // wall climb link: the engine lets the ball climb a wall up to about 0.7 of its diameter (A79, A98), so a ledge higher than the step-up and thinner than the ball can be crossed. Try the cells just beyond a blocked neighbour, straight ahead, that are higher by at most 1.2 R
+      if (g === null && (!di || !dj) && !process.env.NOLEDGE) { const Hc = 1.2 * R, nk = Math.ceil(2.2 * R / CELL) + 1; for (let m = 2; m <= nk; m++) { const li = i + di * m, lj = j + dj * m, lk = key(li, lj); if (dist.has(lk)) break; const gg = freeAt(li * CELL, lj * CELL, y + Hc - stepUp - CELL * 1.05); if (gg !== null && gg > y + stepUp && gg <= y + Hc) { dist.set(lk, d + m * 1.2); par.set(lk, [i, j]); gy.set(lk, gg); q.push([li, lj]); break; } } continue; }
+      if (g === null) continue;
       if (di && dj && (!gy.has(key(i + di, j)) && freeAt((i + di) * CELL, j * CELL, y) === null || !gy.has(key(i, j + dj)) && freeAt(i * CELL, (j + dj) * CELL, y) === null)) continue;
       dist.set(k, d + (di && dj ? 1.414 : 1)); par.set(k, [i, j]); gy.set(k, g); q.push([ni, nj]); } }
   // target: nearest (by path) catchable object that some reached cell can touch
