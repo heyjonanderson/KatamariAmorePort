@@ -41,12 +41,14 @@ const P = prog(`
   uniform mat4 uVP; uniform mat4 uModel; varying vec3 vN; varying vec2 vUv;
   void main() { gl_Position = uVP * (uModel * vec4(aPos, 1.0)); vN = mat3(uModel) * aNrm; vUv = aUv; }`,
 `
-  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec2 uLight;
+  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec3 uLight;
   void main() {
     vec4 c = uUseTex > 0.5 ? texture2D(uTex, vUv) : vec4(uTint, 1.0);
-    if (c.a < 0.4) discard;
-    vec3 n = normalize(vN); float l = uLight.x + uLight.y * abs(dot(n, normalize(vec3(0.4, 0.8, 0.5))));
-    gl_FragColor = vec4(c.rgb * l, 1.0);
+    if (c.a < 0.002) discard;   // the engine's alpha test is GL_NOTEQUAL 0 (A117); the rest of the alpha is blended below
+    vec3 n = normalize(vN);
+    // uLight.z = 1: the engine's fixed-function light. Ambient 0.3 (light) + 0.2 (GL default scene ambient), diffuse 1.0, direction (42, -349, -29) from the binary with y flipped for our y-up frame (A117). Others: my presets
+    float l = uLight.z > 0.5 ? min(uLight.x + uLight.y * max(dot(n, normalize(vec3(42.0, 349.0, -29.0))), 0.0), 1.0) : uLight.x + uLight.y * abs(dot(n, normalize(vec3(0.4, 0.8, 0.5))));
+    gl_FragColor = vec4(c.rgb * l, c.a);
   }`);
 const L = { pos: gl.getAttribLocation(P, 'aPos'), nrm: gl.getAttribLocation(P, 'aNrm'), uv: gl.getAttribLocation(P, 'aUv'),
   vp: gl.getUniformLocation(P, 'uVP'), model: gl.getUniformLocation(P, 'uModel'),
@@ -56,10 +58,13 @@ const L = { pos: gl.getAttribLocation(P, 'aPos'), nrm: gl.getAttribLocation(P, '
 const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
 // ---- settings (A67): lighting and texture filtering, kept in localStorage. The original's own values are not in the data, so these are choices, not a copy ----
-const LIGHTS = [['Soft', 0.55, 0.45], ['Flat', 1, 0], ['Strong', 0.3, 0.7]], FILTERS = ['Smooth', 'Sharp', 'Pixel'], SET = { light: 0, filter: 0 }, ALLTEX = [];
-try { const s = JSON.parse(localStorage.getItem('kam_set') || '{}'); SET.light = s.light | 0; SET.filter = s.filter | 0; } catch (e) {}
+// Back-face culling (A8, A117): the engine enables GL_CULL_FACE with glFrontFace(GL_CW) (FUN_0000dd90) and the model data agrees: the signed volume of every closed object is negative, i.e. faces are clockwise seen from outside in data axes. The port mirrors x in the projection (P20), so on screen the front faces turn counter-clockwise: default GL front face
+const CULLMODE = new URLSearchParams(location.search).get('cull') || 'ccw';
+const setCull = () => { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);  if (CULLMODE === 'off') gl.disable(gl.CULL_FACE); else { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.frontFace(CULLMODE === 'cw' ? gl.CW : gl.CCW); } };
+const LIGHTS = [['Original', 0.5, 1, 1], ['Soft', 0.55, 0.45, 0], ['Flat', 1, 0, 0], ['Strong', 0.3, 0.7, 0]], FILTERS = ['Smooth', 'Sharp', 'Pixel'], SET = { light: 0, filter: 0 }, ALLTEX = [];
+try { const s = JSON.parse(localStorage.getItem('kam_set') || '{}'); SET.light = s.lt === 2 ? s.light | 0 : 0; SET.filter = s.filter | 0; } catch (e) {}   // lt 2 = the preset list with Original first; older saved values meant the old list, so they fall back to Original
 if (!LIGHTS[SET.light]) SET.light = 0; if (!FILTERS[SET.filter]) SET.filter = 0;
-function saveSet() { try { localStorage.setItem('kam_set', JSON.stringify(SET)); } catch (e) {} }
+function saveSet() { try { localStorage.setItem('kam_set', JSON.stringify({ light: SET.light, filter: SET.filter, lt: 2 })); } catch (e) {} }
 function texFilter(t, mip) {
   gl.bindTexture(gl.TEXTURE_2D, t); const f = SET.filter;
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f === 2 ? (mip ? gl.NEAREST_MIPMAP_NEAREST : gl.NEAREST) : mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
@@ -206,11 +211,11 @@ function shapeBall(R) {
 const iconCv = document.createElement('canvas'); iconCv.width = iconCv.height = 128; const iconCx = iconCv.getContext('2d');
 function drawIcon(now) {   // renders lastPick's model into the bottom left 128 px of the canvas, copies it into iconCv, and the scene is cleared and drawn over it
   if (!lastPick || !og || canvas.width < 128 || canvas.height < 128) return; const i = lastPick.info, m = og.mods[i.model]; if (!m) return;
-  gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 128, 128); gl.viewport(0, 0, 128, 128); gl.clearColor(0.6, 0.6, 0.6, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 128, 128); gl.viewport(0, 0, 128, 128); gl.clearColor(0.6, 0.6, 0.6, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); setCull();
   const c = [0, 1, 2].map(k => (i.lo[k] + i.hi[k]) / 2), r = 0.5 * Math.hypot(i.hi[0] - i.lo[0], i.hi[1] - i.lo[1], i.hi[2] - i.lo[2]) || 1, a = now / 1000 * 1.4, ca = Math.cos(a), sa = Math.sin(a);
   const Rs = [ca, 0, sa, 0, 1, 0, -sa, 0, ca], t = [-(Rs[0] * c[0] + Rs[1] * c[1] + Rs[2] * c[2]), -(Rs[3] * c[0] + Rs[4] * c[1] + Rs[5] * c[2]), -(Rs[6] * c[0] + Rs[7] * c[1] + Rs[8] * c[2])];
   const vp = M.mul(M.persp(0.5, 1, r * 0.2, r * 10), M.look([0, r * 1.3, r * 3.4], [0, 0, 0], [0, 1, 0]));
-  gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.useProgram(P); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv); bindGroup(og); drawModel(og, m, M.fromR3(Rs, t, 1));
   iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
   gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -247,7 +252,7 @@ function draw(alpha) {
   const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   { const c = play.mis.clear || [0.55, 0.75, 0.95]; gl.viewport(0, 0, w, h); gl.clearColor(c[0], c[1], c[2], 1); }   // the stage's own clear colour from GRAPHICS (A116); S015 and S017 have no GRAPHICS section and keep the old blue
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); setCull();
   if (!G.ready || !S) return;
   drawIcon(performance.now());
   G.tris = 0;
@@ -272,7 +277,7 @@ function draw(alpha) {
   const far = Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
-  gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.useProgram(P); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // map
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
@@ -516,7 +521,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=36`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=36`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=38`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }

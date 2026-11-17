@@ -114,6 +114,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Sweep 3 of the guesses: the engine’s GL state read from the binary (culls back faces, alpha test not-equal-zero with blending, light ambient 0.5 and diffuse 1.0 from (42, -349, -29)) and used as the default lighting (A117); a nibble-order bug that garbled the ball, prince, shadow and some UI textures found and fixed by re-exporting 38 images (A118); A3, A4, A17 verified; only the map’s own models are loaded, S004 re-run: won in 506 s (A22)
 - Ball core drawn at the engine’s display size and never stretched (A111); camera wall avoidance rule read from the binary (A112); back push and the turn constants checked against the source (A113)
 - Zoom-out sizes checked against a tester’s list for all six areas: every size is a row in the stage’s camera table, so nothing to change (A110)
 - Opening stories of all three packs played from the original script tables: sprites, timing, fades, speech balloons, music and the closing scroll, with a tap to skip (A107)

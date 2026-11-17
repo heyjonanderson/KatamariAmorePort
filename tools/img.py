@@ -1,7 +1,7 @@
 import struct, numpy as np
 from PIL import Image
-def decode(pl, nibble='lo'):
-    """pl = chunk payload (after the 4-byte length). returns (RGBA uint8 HxWx4, info dict)"""
+def decode(pl, nibble='hi'):
+    """pl = chunk payload (after the 4-byte length). returns (RGBA uint8 HxWx4, info dict). 4-bit images: the HIGH nibble is the first pixel (A3, checked by eye on the DO NOT ENTER sign: 'lo' garbles the letters, 'hi' reads right). The default used to be 'lo' and the ball, prince, shadow and UI art were decoded with it by mistake until sweep 3"""
     flags = pl[1]; cnt = struct.unpack('>H', pl[2:4])[0]
     w, h = struct.unpack('>HH', pl[4:8])
     alpha = flags & 1; idx8 = bool(flags & 8); direct = bool(flags & 0x10)
