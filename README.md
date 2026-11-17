@@ -30,9 +30,9 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 
 ## Where it stands
 
-**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera data rows, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
+**From the original code:** movement (drag, acceleration, brake, stick curve), the speed table, catch size and growth, crumble and converge, time limits, camera rows, camera follow and its 32 frame moves, the physics parameter table, text in six languages, the ball model, stage data, and sounds.
 
-**Still mine:** camera follow smoothing, which sound plays while objects act, menu and intro staging, and touch controls.
+**Still mine:** camera wall avoidance, which sound plays while objects act, menu and intro staging, and touch controls.
 
 ## Roadmap
 
@@ -70,7 +70,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Blocked on data that is only in the binary
 
-- Camera follow code (P10)
+- Camera wall avoidance and the zoom echo (A102)
 - Catch sound routing (A53)
 - Menu and intro staging (A38 to A41, A58)
 - Unused stage fields

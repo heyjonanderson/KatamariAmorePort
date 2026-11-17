@@ -239,12 +239,17 @@
     return { speed: L(1), brakeF: L(3), brakeB: L(4), brakeS: L(5), brakeD: L(6), rF: L(7), rB: L(8), rS: L(9), rD: L(10), accF: L(13), accB: L(14), accS: L(15), accD: L(16), oujiZ: L(17) };
   }
   // Camera row at the current diameter (CAMERA_DATA): eye offset behind/up, look-at offset ahead/up, far clip. Offsets are logic space, y down.
-  function cameraParams(S) {
+  // Camera rows, from the engine (FUN_00029948, A102). The row is chosen by a step rule, not blended: row i serves diameters above row i's own size
+  // up to row i+1's size (row 0 below row 1's), and the last row from then on. A row's numbers are logic space (y down, z behind negative).
+  function cameraRow(S) {
+    const C = S.cam; if (!C.length) return -1;
+    let i = 0; while (i < C.length - 1 && !(S.diam <= C[i + 1][0])) i++;
+    return i;
+  }
+  function cameraParams(S, idx) {
     const C = S.cam; if (!C.length) return { back: S.diam * 4.5, up: S.diam * 1.4, ahead: S.diam, lookUp: 0, far: 800 };
-    const d = S.diam; let i = 1; while (i < C.length - 1 && d > C[i][0]) i++;
-    const a = C[Math.min(i - 1, C.length - 1)], b = C[Math.min(i, C.length - 1)];
-    const t = d <= C[0][0] ? 0 : Math.max(0, Math.min(1, (d - a[0]) / ((b[0] - a[0]) || 1))), L = c => a[c] + (b[c] - a[c]) * t;
-    return { back: -L(3), up: -L(2), ahead: L(7), lookUp: -L(6), far: L(9) };
+    const r = C[idx === undefined ? cameraRow(S) : idx];
+    return { back: -r[3], up: -r[2], ahead: r[7], lookUp: -r[6], far: r[9] };
   }
   // Convenience for keyboards and bots: forward/turn (turn > 0 turns left, toward +yaw) -> two stick values
   function tank(fwd, turn) { const c = v => Math.max(-1, Math.min(1, v)); return { L: c(fwd - turn), R: c(fwd + turn) }; }
@@ -529,6 +534,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { splineAt, moveMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { splineAt, moveMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

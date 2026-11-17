@@ -124,7 +124,8 @@ function makeBallCore(cg, no) {
 
 // ---- state ----
 let play = null, og = null, mg = null, ou = null, ball = null, S = null;
-const cam = { yaw: 0, ready: false, k: 0.2, back: 20, up: 8, ahead: 8, lookUp: 0 };
+const CAM_FRAMES = 32;   // frames a camera row change takes (mission struct word 4, FUN_00010d20)
+const cam = { yaw: 0, ready: false, idx: 0, trans: 0, far: 800, back: 20, up: 8, ahead: 8, lookUp: 0 };
 const keys = {};
 const pads = { S: null };                    // touch stick: {id, ox, oy, x, y}. One floating stick on the left, like the original (A70)
 let touchDash = false, touchFlip = false, lastPick = null;
@@ -212,6 +213,23 @@ function drawIcon(now) {   // renders lastPick's model into the bottom left 128 
   iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
   gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
+function camInit() {   // gYm_CameraInit: the row for the current size, no transition
+  const idx = KSim.cameraRow(S), cp = KSim.cameraParams(S, idx);
+  cam.idx = idx; cam.back = cp.back; cam.up = cp.up; cam.ahead = cp.ahead; cam.lookUp = cp.lookUp; cam.far = cp.far; cam.trans = 0; cam.ready = true;
+}
+function camStep() {   // once per sim frame. A new row is picked only when the ball outgrows the current row and no move is running (FUN_00029948); the offsets then move linearly over 32 frames (FUN_0002918c), the far plane at once
+  if (!cam.ready) camInit();
+  if (cam.trans > 0) {
+    cam.back += cam.vel.back; cam.up += cam.vel.up; cam.ahead += cam.vel.ahead; cam.lookUp += cam.vel.lookUp;
+    if (--cam.trans === 0) { const t = cam.target; cam.back = t.back; cam.up = t.up; cam.ahead = t.ahead; cam.lookUp = t.lookUp; }
+    return;
+  }
+  const idx = KSim.cameraRow(S); if (idx < 0 || idx === cam.idx || !(S.cam[cam.idx][0] < S.diam)) return;
+  const t = KSim.cameraParams(S, idx), N = CAM_FRAMES;
+  cam.idx = idx; cam.target = t; cam.far = t.far; cam.trans = N;
+  cam.vel = { back: (t.back - cam.back) / N, up: (t.up - cam.up) / N, ahead: (t.ahead - cam.ahead) / N, lookUp: (t.lookUp - cam.lookUp) / N };
+  KSnd.se('KD_SE_game_14');   // sound id 0x14 (game_14) plays when the camera starts pulling back (FUN_00029948, A102)
+}
 function draw(alpha) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
@@ -222,11 +240,10 @@ function draw(alpha) {
   G.tris = 0;
   const R = KSim.radius(S);
   const pos = [0,1,2].map(k => prevPos[k] + (S.pos[k] - prevPos[k]) * alpha);
-  // camera from the stage's CAMERA_DATA table, eased toward the ball's heading
-  const cp = KSim.cameraParams(S);
-  if (!cam.ready) { cam.yaw = S.yaw; cam.back = cp.back; cam.up = cp.up; cam.ahead = cp.ahead; cam.lookUp = cp.lookUp; cam.ready = true; }
-  const dyaw = Math.atan2(Math.sin(S.yaw - cam.yaw), Math.cos(S.yaw - cam.yaw)); cam.yaw += dyaw * cam.k;
-  const kk = 1 - Math.exp(-last_dt * 3); cam.back += (cp.back - cam.back) * kk; cam.up += (cp.up - cam.up) * kk; cam.ahead += (cp.ahead - cam.ahead) * kk; cam.lookUp += (cp.lookUp - cam.lookUp) * kk;
+  // camera from the stage's CAMERA_DATA table. The engine puts the eye at ball + (prince to ball direction) * row offset with no easing (FUN_00028cb8), the prince
+  // sitting exactly behind the ball along his own yaw (FUN_000271a4), so the heading is the interpolated yaw. Rows change by camStep (A102)
+  if (!cam.ready) camInit();
+  cam.yaw = prevYaw + (S.yaw - prevYaw) * alpha;
   const cfx = Math.sin(cam.yaw), cfz = Math.cos(cam.yaw);
   const eyeFull = [pos[0] - cfx * cam.back, pos[1] + cam.up, pos[2] - cfz * cam.back];
   // keep the camera inside the room. Ray from the ball toward the wanted eye spot; if something is in the way, swing the camera up and over
@@ -240,7 +257,7 @@ function draw(alpha) {
   cam.L = Math.min(cam.L, clearFor(cam.e, cam.L));                       // safety: smoothed values must not poke through
   const eye = eyeAt(cam.e, cam.L);
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
-  const far = Math.max(cp.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
+  const far = Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3);   // GRAPHICS holds two near/far pairs (0.1/800 and 1/10000 in stage 1); the longer one stops the far end of a hallway from clipping (A52)
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
   gl.useProgram(P); gl.uniform2f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
@@ -439,7 +456,6 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (!G.ready) return;
   const dt = Math.min((now - last) / 1000, 0.25); last = now; last_dt = dt;
-  cam.k = 1 - Math.exp(-dt * 8);
   if (paused) { acc = 0; return; }
   acc += dt; const stepDt = 1 / KSim.FPS;
   const inp = readInput();
@@ -447,7 +463,7 @@ function frame(now) {
   while (acc >= stepDt && n < 5) {
     prevPos = S.pos.slice(); prevYaw = S.yaw;
     const over = S.won || lost;
-    KSim.step(S, over ? { L: 0, R: 0 } : inp);
+    KSim.step(S, over ? { L: 0, R: 0 } : inp); camStep();
     let gotPick = false;
     { const wheel = d => d < 50 ? 3 : d < 100 ? 4 : d < 500 ? 5 : d < 1000 ? 6 : 7;   // sGetWheelSpinStroke table (A101)
       if (S.dash && !prevDash) { KSnd.se('KD_SE_game_09'); dashSndAt = S.frame + wheel(S.diam); }   // SND_SE_SPIN (id 0x0f = game_09) when the stroke starts
@@ -485,7 +501,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=29`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=29`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=30`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=30`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
