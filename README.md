@@ -61,6 +61,7 @@ Built and bot-tested, but only a person can say if it feels right. Ordered so yo
 - **Lumps in the physics** (A64) [S]. Long objects lift the ball slightly as they roll under it, capped at a quarter of the radius. Check it is not bumpy and does not snag on low things.
 - **Lighting and texture settings** (A67) [S]. Pause menu has Lighting (Soft, Flat, Strong) and Textures (Smooth, Sharp, Pixel). Say which pair looks closest to the real game so I can make it the default.
 - **Ball shape and core size** (A111) [S]. New. The ball no longer stretches into an oval (that was my guess, A60) and the core is drawn smaller than the object shell, 0.38 of the growth, like the original. Check 10, 30 and 100 cm: no oval, and no hollow look.
+- **Records and Collection screens, achievement banners** (A114) [S]. New. Stage screen has Records and Collection buttons. Records shows your best per stage and mode on the clipboard; Collection lists what was stuck on the ball when you cleared a story stage. First catch of a pack’s achievement item (CARD, SKULL and so on) shows the original text banner, and the Pac-Man, Tekken or Galaga item the unlock text. Layout of the text is mine; say what looks off.
 - **Camera against walls** (A112) [S]. New. Pressing the ball into a wall or corner now snaps the camera upward at once, up to nearly top-down, at the same distance, instead of sliding in and easing back. Check it looks like the reference videos.
 - **Phone** (P11, C8) [S]. The floating stick, dash and U-turn buttons, pause menu and bug report box have never run on a real phone. Also check landscape, safe areas and that audio starts after the first tap.
 
@@ -83,9 +84,7 @@ The data or code is in the app and nothing is in the way. This is the work queue
 - **Find what blocks stage 2 (South American Ruins)** (A79, A98, A110) [M]. Tester says it cannot be finished. The bot also stalls at about 46 cm on S002. Wall climb is in but has never been played. Find the stuck spot with the bot and compare the wall or step height there with the climb limit.
 - **Check the camera wall avoidance assumptions** (A112) [S]. The swing rule is from the binary: one ray, 10 + 75 degrees by how close the hit is, capped at 85 degrees, no easing. Still unconfirmed: where the ray starts, the swing axis, and what the blocked flag at +0x230 drives. Compare with a reference video of a camera against a wall.
 - **Steering by the engine’s angle rule (sTurn)** (A113, A76) [M]. The turn constants are the engine’s, but the port turns by stick power difference. The source turns by the combined stick angle with TurnFastAngleF/B and SideAngle, and has its own backward branch. Port it if steering feels off.
-- **Test build_all.py on a clean folder** (C4) [S]. The export scripts take arguments and chain, but only two have been re-run that way.
-- **Result screens and end text per pack** (A104) [M]. King lines come from the binary’s pack rule (A105). The extra score and unlock screens of each pack (EXTRA_RES, ACHIEVEMENT, UNLOCK_EX) are not built.
-- **Records, shop and album screens** (A55) [L]. SCORE, SHOP, ALBUM and EXTRA data files ship with the app. Today only best times and sizes are kept, with no score screen.
+- **Extra-stage result lines** (A104, A114) [S]. The EXTRA_RES lines (the King judging a mini-game score) belong to the Pac-Man, Tekken and Galaga stages, which are not ported. The achievement and unlock banners are built (A114).
 
 ### Bot runs
 
@@ -99,9 +98,10 @@ The path-planning bot clears a stage in code, with no person. Slow, and it plays
 
 Not in the shipped source files. Some can be pulled out of the compiled binary, which is how the physics table, the hop, the time limits, wall climb and the sound ids were found.
 
+- **Decode the original album and score layout** (A55, A114) [M]. The Records and Collection screens use the real art but my own text layout. What the album shows per item (pictures, which items count), the score screen rows and the Shop (an in-app purchase page, left out on purpose) are not decoded.
 - **Sound ids with no known trigger** (A101) [S]. Ids 14, 20 and 26 to 29 (game_08, game_14, game_27 to game_30), the lump sound (id 17) and splash (id 28) have no trigger in the port. The new-area sound (game_28) is still my guess.
 - **Path start point** (A37) [S]. Path followers start at the beginning of their curve. The initial position value is assumed zero.
-- **End banners and a few dialog triggers** (A93, A94) [S]. The 1 minute banner timing and position, the achievement and unlock banners, the res_01 trigger, the END_COM call and the variant selector for the result lines are not decoded.
+- **End banners and a few dialog triggers** (A93, A94) [S]. The 1 minute banner timing and position, the res_01 trigger, the END_COM call and the variant selector for the result lines are not decoded.
 - **Unused stage fields** (A91) [S]. The int at +0x44, three floats in the mission record and the story selector for the TIME_LIMIT variants are read but not interpreted.
 - **Menu layout and transitions** (A38 to A41) [M]. Button positions, timings and thumbnail order are mine. The art and text are the original’s. The layout code is in the binary. (The intro is now the original’s.)
 - **Pac-Man, Tekken and Galaga mini-games** (A93) [L]. The Time Attack mini-games are in the app but their source files are not shipped. They would have to be rebuilt from the binary. A tester asked for the 3 extra stages. Not planned yet.
@@ -138,6 +138,7 @@ Not part of this port. Parked here so they do not get lost.
 - Spinner under 2 seconds on stage load and restart, dash speed lines, leaning prince, ball dust, original timer and item tag, size text like 4m02cm8mm
 - Hallway pop-in fix: objects grow in and the draw distance is longer (A51, A52)
 - Audio cut from 33 MB to 9 MB (AAC), title music 8 MB to 0.6 MB
+- Records and Collection screens from the original art, achievement and Extra item banners from the pickup rules in MonoHit.cppi (A114); build_all.py re-run on a clean folder with identical output (C4)
 - Ghidra set up on the app binary, with the physics table in tools/kparam.json; export tools take arguments and chain through build_all.py
 
 ## For testers
