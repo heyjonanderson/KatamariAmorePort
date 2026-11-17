@@ -33,7 +33,7 @@ for st in STAGES:
     rp = floats(sec['RECOVERY_POINT'][1]) if False else list(struct.unpack('>5f', sec['RECOVERY_POINT'][1][2:22]))   # [bottom, x, y, z, angle]; KatamariRecover.cppi: fell when y >= bottom (y down), respawn at the nearest point
     ex = sec['MISSION_DATA_EXT'][1]; target = ex[10:26].decode('latin1').strip()
     mis = dict(target=target, target_raw=target, stoppers=stoppers, addvol=floats(sec['VOLUME_RATIO'][1]), gravity=floats(sec['GRAVITY'][1]), speed=[list(r) for r in recs if len(r) == 21 and r[0] >= 0],
-               mission_floats=mf, recover=rp, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], ouji_scale=floats(sec['OUJI_SCALE'][1])[0], ouji_jump=floats(sec['OUJI_JUMP'][1]), **extra_mis(sec))
+               mission_floats=mf, recover=rp, time_limit=tl, camera=cam, near=gr[0], far=gr[1], near2=gr[2], far2=gr[3], clear=([x / 255 for x in sec['GRAPHICS'][1][18:21]] if 'GRAPHICS' in sec else None),   # clear (sky) colour: the three bytes after the two near/far pairs, read by the GRAPHICS loader as r, g, b / 255 (A116); ouji_scale=floats(sec['OUJI_SCALE'][1])[0], ouji_jump=floats(sec['OUJI_JUMP'][1]), **extra_mis(sec))
     d, b, e, _ = dat.parse(f'{SRC}/{st}MLST.dat'); mst = (d, b, e); mons, _ = T.parse_monolist(chunk(d, b, e, 'MONOLIST'))
     d, b, e, _ = dat.parse(f'{SRC}/{st}OBJM.dat'); have = {x[1]: mdl.parse(d[b+x[2]+4: b+x[2]+x[3]]) for x in e if x[0] == 2}
     nd, nb, ne, _ = dat.parse(f'{SRC}/English.lproj/MONONAME.dat'); nch = chunk(nd, nb, ne, 'MONONA%02d' % (int(st[1:]) - 1)); names_en = []
@@ -102,8 +102,9 @@ for st in STAGES:
         for i in range(1, len(ix) - 1):
             for k in (ix[0], ix[i], ix[i+1]): camhit += [round(cv[k*3], 3), round(cv[k*3+1], 3), round(-cv[k*3+2], 3)]
     dm, bm, em, _ = dat.parse(f'{SRC}/{st}MAPM.dat'); tris = []
+    _loc = [e_ for e_ in em if e_[1] == 'MAP_LOC']; _keep = set(T.map_loc_names(dm[bm+_loc[0][2]+4: bm+_loc[0][2]+_loc[0][3]])) if _loc else None   # only the models MAP_LOC lists are map pieces (A22)
     for t, n, off, sz in em:
-        if t != 2: continue
+        if t != 2 or (_keep is not None and n not in _keep): continue
         m = mdl.parse(dm[bm+off+4: bm+off+sz]); v = m['pos']
         for s in m['subs']:
             idx = s['tris']

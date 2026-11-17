@@ -30,3 +30,10 @@ def parse_hitmap(h):
         k = h[o]; n = struct.unpack('>H', h[o+1:o+3])[0]
         polys.append([k] + list(struct.unpack('>%dH' % n, h[o+3:o+3+2*n]))); o += 3 + 2 * n
     return list(v), polys, (len(polys) == npoly and o == len(h))
+
+
+def map_loc_names(c):
+    """MAP_LOC chunk of a *MAPM.dat: u16 count, then count names of 8 bytes. The stage loader (FUN_0000e5xx near 0x43657 in the binary) makes
+    one map instance per record and takes its name from this list, so a model in the file that is not listed is never put in the map (A22)."""
+    n = (c[0] << 8) | c[1]
+    return [c[2 + 8 * k: 10 + 8 * k].decode('latin1').strip() for k in range(n)]

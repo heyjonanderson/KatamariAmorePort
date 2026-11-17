@@ -9,9 +9,13 @@ TEX = sys.argv[3] if len(sys.argv) > 3 else os.path.expanduser('~/work/out/tex')
 
 def models_of(fn):
     d, base, ents, _ = dat.parse(os.path.join(SRC, fn))
-    out = []
+    out = []; keep = None
+    if fn.endswith('MAPM.dat'):   # only the models MAP_LOC lists are map pieces (A22): S004 has three more and S009 one more that the game never places
+        import tables as T
+        loc = [e for e in ents if e[1] == 'MAP_LOC']
+        if loc: keep = set(T.map_loc_names(d[base+loc[0][2]+4: base+loc[0][2]+loc[0][3]]))
     for t,n,off,sz in ents:
-        if t == 2: out.append((n, mdl.parse(d[base+off+4: base+off+sz])))
+        if t == 2 and (keep is None or n in keep): out.append((n, mdl.parse(d[base+off+4: base+off+sz])))
     return out
 
 def export_group(models, texdirs, outdir, tag, report):

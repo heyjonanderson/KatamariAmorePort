@@ -187,6 +187,11 @@
     const v = [c[0] / cl, 0, c[2] / cl], x = [-v[0], 0, -v[2]], y = [v[1] * z[2] - v[2] * z[1], v[2] * z[0] - v[0] * z[2], v[0] * z[1] - v[1] * z[0]];
     return [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
   };
+  // Flip-book monos (A59, FUN_00018514 = MonoCtrl::animation): each mono keeps its own phase, adds the ANIME speed once per update, and steps to the next model each time it passes 1.
+  // While the mono is stuck to the ball (status 2, _NK_MONO_STAT_KATA) the speed counts three times (1 + 2). Runs for every mono that is not stopped, on the map or on the ball
+  function animMonos(S) {
+    for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly' && o.state !== 'ball') continue; const an = S.info[o.n] && S.info[o.n].anim; if (!an) continue; o.aph = (o.aph || 0) + an.speed * (o.state === 'ball' ? 3 : 1); }
+  }
   function moveMonos(S) {
     for (const o of S.objs) {
       if (!o.path || o.state !== 'map') continue;
@@ -387,7 +392,7 @@
   }
 
   function step(S, input) {
-    S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
+    S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); animMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
     let inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
     const cw = S.cw, cwWasOn = cw.on, stepW = cw.on ? 0.05 : stepUp, climbW = cw.on ? 0.05 : climb;   // while climbing the ball has to get fully above a ledge: no step-up allowance
@@ -585,6 +590,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { splineAt, moveMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

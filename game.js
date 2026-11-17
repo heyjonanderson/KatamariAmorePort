@@ -246,7 +246,8 @@ function draw(alpha) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  gl.viewport(0, 0, w, h); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  { const c = play.mis.clear || [0.55, 0.75, 0.95]; gl.viewport(0, 0, w, h); gl.clearColor(c[0], c[1], c[2], 1); }   // the stage's own clear colour from GRAPHICS (A116); S015 and S017 have no GRAPHICS section and keep the old blue
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
   if (!G.ready || !S) return;
   drawIcon(performance.now());
   G.tris = 0;
@@ -277,7 +278,7 @@ function draw(alpha) {
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
   bindGroup(og);
-  for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((S.frame + alpha) * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
+  for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
   const bpos = pos; pulse *= 0.86;
@@ -285,7 +286,7 @@ function draw(alpha) {
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
   // attached objects: world = T(ball) * R * [lrot | lpos]
   for (const o of S.attached) {
-    const m = og.mods[o.model]; if (!m) continue;
+    const an = S.info[o.n].anim, m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed * 3) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // stuck monos animate at three times the speed (A59)
     const wr = KSim.mmul(S.R, o.lrot), wp = KSim.mvec(S.R, o.lpos);
     drawModel(og, m, objMat(wr, [bpos[0] + wp[0], bpos[1] + wp[1], bpos[2] + wp[2]]));
   }
@@ -515,7 +516,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=35`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=35`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=36`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=36`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
