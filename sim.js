@@ -13,7 +13,9 @@
   const DRAG = KP.registance;        // A71: drag per frame as a fraction of velocity (the engine subtracts v * Registance along the motion)
   // MonoHit.cppi gYm_MonoHitSetInfo: catch diameter (mm) from box volume * volume ratio / GetRatio, as a sphere
   const engineCatchMm = i => Math.floor(2000 * Math.cbrt(3 * i.boxvol * i.vol_ratio / KP.getRatio / (4 * Math.PI)));
-  const CLIMB = 0.75;                // PLACEHOLDER (P19): the ball rolls up onto too-big objects whose top is at most CLIMB * radius above its bottom
+  const CLIMB = 0.5;                 // PLACEHOLDER (P19, A98): too-big objects whose top is at most CLIMB * radius above the ball's bottom are rolled onto at once, like the step-up. Anything higher is climbed with the engine's wall climb
+  // Wall climb (KatamariMain sClimbWall/sClimbWallTop, KatamariHit sCheckClimbWall/sEnableClimbWall/gYm_KatamariDisableClimbWall; constants from the KATA_CLIMB_PARAM struct in the binary, A79, A98)
+  const CW = { angleCos: Math.cos(0.4 * Math.PI / 2), distRatio: 0.7, topTime: 10, maxSpd: 0.95, forbid: 10, accel: 0.1, speedPerDiam: 0.015, camCos: Math.cos(Math.PI / 3) };
   let GRID = 40;                                                  // set per stage in create: big stages (the ball starts at metres) need bigger cells
 
   // ---- small math ----
@@ -94,7 +96,7 @@
   }
   // push the ball out of steep collision triangles, horizontally. Returns the push directions used (unit xz) so velocity can be cut
   // Sloped faces (0.7 <= |ny| < 0.97, ramps) are pushed out of in 3D from above so the ball rides up them (P19). Sets S.rampLift when it lifted the ball.
-  function hitWalls(S, R, steepOnly) {
+  function hitWalls(S, R, steepOnly, riser) {
     const H = S.hit, out = []; S.rampLift = false; if (!H) return out;
     for (let it = 0; it < 3; it++) {
       let moved = false; const seen = new Set(), T = H.tris, x = S.pos[0], y = S.pos[1], z = S.pos[2];
@@ -109,7 +111,7 @@
             const d = Math.sqrt(d2), m = R - d; S.pos[0] += dx / d * m; S.pos[1] += dy / d * m; S.pos[2] += dz / d * m; if (dy > 0) S.rampLift = true; moved = true; continue;
           }
           const o = t * 9, lo = Math.min(T[o+1], T[o+4], T[o+7]), hi = Math.max(T[o+1], T[o+4], T[o+7]); if (hi < y - R || lo > y + R) continue;
-          if (hi <= y - R + Math.max(0.5 * R, 1)) continue;               // low riser (a stair step): rolled over, the step top is the floor (A45)
+          if (hi <= y - R + (riser !== undefined ? riser : Math.max(0.5 * R, 1))) continue;               // low riser (a stair step): rolled over, the step top is the floor (A45)
           const c = closestOnTri(T, o, S.pos[0], S.pos[1], S.pos[2]), dx = S.pos[0] - c[0], dy = S.pos[1] - c[1], dz = S.pos[2] - c[2];
           if (dx*dx + dy*dy + dz*dz >= R * R) continue;
           if (dy > 0.5 * R) {
@@ -152,7 +154,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
+      lift: 0, liftApplied: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget,
     };
     S.diam = diamFromVol(S.volume);
     const SET = opts.set || 'S';   // placement set for the mode: S story, T time attack, J exact size, E eternal (A82)
@@ -362,6 +364,9 @@
     S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
     const inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
+    const cw = S.cw, cwWasOn = cw.on, stepW = cw.on ? 0.05 : stepUp, climbW = cw.on ? 0.05 : climb;   // while climbing the ball has to get fully above a ledge: no step-up allowance
+     if (cw.forbid > 0) cw.forbid--;                    // sUpdateTime
+    const cwOff = () => { if (cw.on) { if (cw.eff <= 0) { cw.forbid = CW.forbid; } else { cw.eff--; return; } } cw.on = false; cw.top = false; cw.startY = 0; cw.topT = 0; };   // gYm_KatamariDisableClimbWall
     // lumps lift the ball: the surface point that faces down decides how high the centre rides. Eased so it does not jitter (A64)
     S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
@@ -388,7 +393,7 @@
     if (S.dash) { power = 1; acc = tp.accD; ratio = tp.rD; }
     else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * tiltFactor(power); }
     else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
-    const fmax = tp.speed * ratio;
+    const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
     if (dir !== 0) {
       let ix = fx * dir, iz = fz * dir;
@@ -411,36 +416,71 @@
     if (Math.hypot(vx, vz) < 1e-3) { vx = 0; vz = 0; }
     const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed; let hitPow = 0;   // incoming velocity, for crumble
     const bottom = S.pos[1] - R;
-    const ok = (x, z) => supportAt(S, x, z, bottom + stepUp, bottom + climb) !== null;
+    const ok = (x, z) => supportAt(S, x, z, bottom + stepW, bottom + climbW) !== null;
     let dx = vx, dz = vz, moved = 0, mx = 0, mz = 0;
+    if (cw.on && cw.top) { dx = 0; dz = 0; }                                          // at the top the move is not added (sControl)
+    // wall contacts this step, one entry per distinct normal (u16HitCount[1] counts wall faces; A98: flat walls made of many triangles count once)
+    const walls = [], addWall = (nx, nz, o) => { for (const w of walls) if (w.n[0] * nx + w.n[1] * nz > 0.99) { if (o && !w.o) w.o = o; return; } walls.push({ n: [nx, nz], o: o || null }); };
+    const wallAt = (x, z) => { const g = supportAt(S, x, z, bottom + 6 * R, bottom + 6 * R); return g !== null && g > bottom; };   // higher ground ahead is a wall, no ground at all is an edge
     if (dx || dz) {
       const nx = S.pos[0] + dx, nz = S.pos[2] + dz;
       if (ok(nx, nz)) { S.pos[0] = nx; S.pos[2] = nz; mx = dx; mz = dz; }
-      else if (ok(S.pos[0] + dx, S.pos[2])) { S.pos[0] += dx; mx = dx; vz *= 0.3; }
-      else if (ok(S.pos[0], S.pos[2] + dz)) { S.pos[2] += dz; mz = dz; vx *= 0.3; }
-      else { vx *= 0.3; vz *= 0.3; }
+      else if (ok(S.pos[0] + dx, S.pos[2])) { S.pos[0] += dx; mx = dx; vz *= 0.3; if (dz && wallAt(S.pos[0], S.pos[2] + dz)) addWall(0, -Math.sign(dz)); }
+      else if (ok(S.pos[0], S.pos[2] + dz)) { S.pos[2] += dz; mz = dz; vx *= 0.3; if (dx && wallAt(S.pos[0] + dx, S.pos[2])) addWall(-Math.sign(dx), 0); }
+      else { vx *= 0.3; vz *= 0.3; if (dx && wallAt(S.pos[0] + dx, S.pos[2])) addWall(-Math.sign(dx), 0); if (dz && wallAt(S.pos[0], S.pos[2] + dz)) addWall(0, -Math.sign(dz)); }
       moved = Math.hypot(mx, mz);
     }
     // solid objects: anything too big to pick up is a box (P8). Low ones are rolled over (P9)
     const diamMm = S.diam * 10;
     for (const o of S.objs) {
       if (o.state !== 'map' || o.catchMm <= diamMm) continue;
-      if (o.top <= bottom + climb) continue;
+      if (o.top <= bottom + climbW) continue;
       if (Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) > R + o.maxlen) continue;
       const bc = boxClosest(o, S.pos); if (bc.dist >= R || bc.dist < 1e-6) continue;
       const nx = S.pos[0] - bc.p[0], nz = S.pos[2] - bc.p[2], hl = Math.hypot(nx, nz); if (hl < 1e-6) continue;
       const push = (R - bc.dist) / bc.dist, px = S.pos[0] + (S.pos[0] - bc.p[0]) * push, pz = S.pos[2] + (S.pos[2] - bc.p[2]) * push;
-      if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl, vn = vx * ux + vz * uz; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, ux, uz, vIn, vmax)); vx -= vn * ux; vz -= vn * uz; } }
+      if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl; addWall(ux, uz, o); const vn = vx * ux + vz * uz; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, ux, uz, vIn, vmax)); vx -= vn * ux; vz -= vn * uz; } }
     }
     // walls from the collision mesh
-    for (const n of hitWalls(S, R)) { const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
-    if (hitPow > 0) crumbleHit(S, hitPow, vIn, vmax);
+    for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
+    if (hitPow > 0 && !cw.on && !cwWasOn) crumbleHit(S, hitPow, vIn, vmax);   // sMonoCrumble does nothing while climbing
     S.v[0] = vx; S.v[1] = vz; S.speed = Math.hypot(vx, vz); if (S.rampLift) S.vy = Math.max(S.vy, 0);
+    // wall climb: sCheckClimbWall decides, sEnableClimbWall / DisableClimbWall change state, sClimbWall lifts the ball
+    {
+      let ok1 = false;
+      if (walls.length === 1) {                                                        // more than one wall face at once: no climb
+        const w = walls[0], free = !!(w.o && w.o.top <= bottom + CW.distRatio * S.diam && S.grounded);   // sCheckClimbMono: the object's top is within reach
+        let can = cw.on || free;
+        if (!can) can = S.grounded && cw.forbid === 0 && !S.rampLift;                  // not forbidden, not flying, not on a slope (HitEdge and DisableClimb are not modelled)
+        if (can) {
+          const hx = -w.n[0], hz = -w.n[1], camCos = fx * hx + fz * hz;                 // camera forward against the direction to the wall (camera = prince facing, A98)
+          if (camCos >= CW.camCos && dir !== 0) {
+            const n = cw.on ? cw.norm : w.n, ix = fx * dir, iz = fz * dir, mv = ix * n[0] + iz * n[1];   // input must point into the wall: inner(wall normal, -input) >= cos 36
+            if (-mv >= CW.angleCos) ok1 = true;
+          }
+        }
+        if (ok1 && !cw.on) { cw.speed = 0; cw.top = false; cw.norm = w.n.slice(); cw.startY = S.pos[1]; }
+      }
+      if (ok1) { if (!cw.top) cw.eff = 1; cw.forbid = 0; cw.on = true; }
+      else cwOff();
+      if (cw.on) {                                                                      // sClimbWall
+        if (cw.top) { cw.topT++; if (cw.topT > CW.topTime) cwOff(); }
+        else {
+          const reach = CW.distRatio * S.diam; let now = Math.max(0, S.pos[1] - cw.startY);
+          if (now < reach) {
+            cw.speed = Math.min(cw.speed + CW.accel, S.diam * CW.speedPerDiam);
+            let up = cw.speed; now += cw.speed;
+            if (now > reach) { up -= now - reach; cw.top = true; cw.topT = 0; }
+            S.pos[1] += up;
+          } else { cw.top = true; cw.topT = 1; }
+        }
+      }
+    }
     // vertical
-    const g = gravity(S); S.vy -= g;
-    let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepUp + Math.max(0, -S.vy), y - R + climb + Math.max(0, -S.vy));
+    const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g;
+    let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepW + Math.max(0, -S.vy), y - R + climbW + Math.max(0, -S.vy));
     if (sup !== null && y - R <= sup) { y = sup + R; S.vy = 0; }
-    S.pos[1] = y; S.grounded = sup !== null && Math.abs(y - R - sup) < 1e-3;
+    S.pos[1] = y; S.grounded = !cw.on && sup !== null && Math.abs(y - R - sup) < 1e-3;
     // roll: the surface moves with the ball, axis = up x motion
     if (moved > 1e-6) {
       const axis = norm([mz, 0, -mx]);

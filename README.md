@@ -25,7 +25,7 @@ Run `python3 serve.py` (or `serve.bat` on Windows) and open the address it print
 - `viewer.html`: model and stage viewer
 - `sim.js`: rules and physics. `game.js`: rendering and HUD. `text.js` and `menu.js`: interface. `audio.js`: sound
 - `tools/`: Python export scripts. `python3 tools/build_all.py APP_FOLDER` rebuilds `data/` from a decrypted app folder. `tools/kparam.json` is the physics table read from the binary
-- `tests/`: Node tests. `node tests/bot2.js S001` plays a stage with a path-planning bot, and `node tests/game_smoke.js` checks the game loads
+- `tests/`: Node tests. `node tests/bot2.js S001` plays a stage with a path-planning bot, `node tests/climb.js` checks the wall climb, and `node tests/game_smoke.js` checks the game loads
 - `SPEC.md`: notes on the data formats
 
 ## Where it stands
@@ -46,7 +46,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 - **Stage 1 trophy rotated 90 degrees** (A87). Placement rotation order was fixed from the loader (A97) but that does not touch yaw, so this is still open. It is the one that blocks the way to the next area.
 - **Prince's face is upside down** (A81). The binary and the texture say it is upright, so I need to know where it shows. Screenshot please.
 - **Controls should feel like the reference gameplay** (A83). Ask which part is off: stick feel, camera turning, or dash.
-- **Wall climbing** (A79). Also listed under Ready to build.
+- **Wall climbing** (A79, A98). New, never played. Roll into a wall or a tall object head-on and the ball lifts up it. Check the feel and that it does not catch on things it should not.
 
 ### Needs a human
 
@@ -61,7 +61,6 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Ready to build
 
-- **Wall climbing** (A79). Values are read from the binary and the logic is in `KatamariHit.cppi`. The port has a step-up placeholder.
 - **Stage packs 2 and 3** (A44). The app holds 21 stages and only S001 to S006 are exported.
 - **Records, shop, and album screens** (A55). The data files ship with the app.
 - **Rest of the physics table** (A71, A76). Wall and flat-ground angles, fly and landing times, display scale growth, and what a back push does.
@@ -77,6 +76,7 @@ Each item lists its entry in ASSUMPTIONS.md. Items marked RESOLVED there were ch
 
 ### Done
 
+- Wall climb from the engine's state machine and the KATA_CLIMB_PARAM numbers (A79, A98)
 - Catch size solved: the engine reads each model's stored bounding box (A78)
 - Speed table columns decoded; brake and acceleration had been swapped (A27)
 - Crumble throw and thresholds from the source (A80)
