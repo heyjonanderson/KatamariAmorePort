@@ -240,3 +240,4 @@ Last updated: 2026-11-17.
 - 2026-11-17: all 18 stages playable: pack picker, pack-aware strings, per-stage music and catch sounds from the binary (A50, A104 to A106); cache ?v=31
 - 2026-11-17: bot clears with the final wall bounce code: S001 358 s (317 s without the bounce), S003 416 s (635 s without it)
 - 2026-11-17: landing bounce (A108), zoom echo constants, shrink flag found dead; intro stories of all three packs played from the original script tables (A107); sound was silently broken since 2026-11-06 and is fixed (A109); cache ?v=32
+- 2026-11-17: bot clears with the landing bounce: S001 309 s, S003 482 s, S009 305 s (all won); S008 and S015 earlier runs got past the goal size without catching their targets (TIMEHOP on a path, THEGUY01 out of reach)
