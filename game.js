@@ -144,7 +144,7 @@ function restart() {
   S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {})); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; lost = false; toast = null; KSnd.bgm('BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0')); ouji = { pat: 0, t: 0 };
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; KSnd.bgm('BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0')); ouji = { pat: 0, t: 0 };
   { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
@@ -220,6 +220,7 @@ function camInit() {   // gYm_CameraInit: the row for the current size, no trans
   cam.idx = idx; cam.back = cp.back; cam.up = cp.up; cam.ahead = cp.ahead; cam.lookUp = cp.lookUp; cam.far = cp.far; cam.trans = 0; cam.ready = true;
 }
 function camStep() {   // once per sim frame. A new row is picked only when the ball outgrows the current row and no move is running (FUN_00029948); the offsets then move linearly over 32 frames (FUN_0002918c), the far plane at once
+  if (echo.on) { echo.x += echo.dx; echo.y += echo.dy; if (--echo.n <= 0) echo.on = false; }
   if (!cam.ready) camInit();
   if (cam.trans > 0) {
     cam.back += cam.vel.back; cam.up += cam.vel.up; cam.ahead += cam.vel.ahead; cam.lookUp += cam.vel.lookUp;
@@ -230,7 +231,16 @@ function camStep() {   // once per sim frame. A new row is picked only when the 
   const t = KSim.cameraParams(S, idx), N = CAM_FRAMES;
   cam.idx = idx; cam.target = t; cam.far = t.far; cam.trans = N;
   cam.vel = { back: (t.back - cam.back) / N, up: (t.up - cam.up) / N, ahead: (t.ahead - cam.ahead) / N, lookUp: (t.lookUp - cam.lookUp) / N };
-  KSnd.se('KD_SE_game_14');   // sound id 0x14 (game_14) plays when the camera starts pulling back (FUN_00029948, A102)
+  echoStart(); KSnd.se('KD_SE_game_14');   // sound id 0x14 (game_14) plays when the camera starts pulling back (FUN_00029948, A102)
+}
+// Zoom echo when the camera steps out (FUN_00034e58, 34e90, 34f94, called from FUN_00029948 with 0, 3.0 and 30 frames, A108): the frame as it was is kept, and for 30 frames four copies are drawn over the scene.
+// x runs 1 to 3 and y 1 to 0 in equal steps; copy i (4 down to 1) is scaled max(x - i/10, 1) about the centre at alpha 0.25 * y
+const echo = { on: false, want: false, x: 1, y: 1, dx: 0, dy: 0, n: 0, img: null };
+function echoStart() { echo.want = true; echo.on = false; echo.x = 1; echo.y = 1; echo.dx = (3 - 1) / 30; echo.dy = (0 - 1) / 30; echo.n = 30; }
+function echoCapture() { if (!echo.want) return; echo.want = false; if (!echo.img) echo.img = document.createElement('canvas'); echo.img.width = canvas.width; echo.img.height = canvas.height; try { echo.img.getContext('2d').drawImage(canvas, 0, 0); echo.on = true; } catch (e) {} }
+function echoDraw(W, H) {
+  if (!echo.on || !echo.img) return;
+  hx.save(); for (let i = 4; i >= 1; i--) { const sc = Math.max(echo.x - i / 10, 1); hx.globalAlpha = Math.max(0, 0.25 * echo.y); hx.drawImage(echo.img, W / 2 - W * sc / 2, H / 2 - H * sc / 2, W * sc, H * sc); } hx.restore();
 }
 function draw(alpha) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -332,6 +342,7 @@ function drawHud() {
   if (hudc.width !== Math.floor(W * dpr)) { hudc.width = Math.floor(W * dpr); hudc.height = Math.floor(H * dpr); }
   hx.setTransform(dpr, 0, 0, dpr, 0, 0); hx.clearRect(0, 0, W, H);
   if (!G.ready || !S) return;
+  echoDraw(W, H);
   const gs = Math.max(120, Math.min(190, Math.min(W, H) * 0.3));
   // size gauge: green gear, rainbow fills outward from the corner as the ball grows toward the goal
   const prog = Math.max(0, Math.min(1, (S.diam - S.startDiam) / (S.goal - S.startDiam)));
@@ -496,7 +507,7 @@ function frame(now) {
     acc -= stepDt; n++; G.frames++;
   }
   if (n === 5) acc = 0;
-  draw(Math.min(acc / stepDt, 1));
+  draw(Math.min(acc / stepDt, 1)); echoCapture();
   hud();
 }
 

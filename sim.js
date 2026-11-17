@@ -153,7 +153,7 @@
       G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
-      vy: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
+      vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (play.mis.layers && play.mis.layers.length) ? play.mis.layers : null, layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
       lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
@@ -307,6 +307,23 @@
     const ref = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2), sp = Math.max(0, Math.min(1, (Math.min(1, vIn / vmax) - 0.25) / 0.25));
     return sp * ref;
   }
+  // Landing bounce (KatamariHit sReflection, airborne branch, A107). The ball's total move this frame (ground move plus gravity) is mirrored off the ground normal and comes back next frame:
+  // sideways x 0.95, up x f32Reflection (0.55), all times the speed. Not at all if the flight was under NonReflectFlyTime (5 frames), which also kills small bounces. A hard fall also shakes objects off (power from FlyFallTime)
+  const FLY_MIN = 5, FALL_MIN = 9, FALL_MAX = 70;     // s32NonReflectFlyTime, s32FlyReflectMinTime, s32FlyReflectMaxTime (kparam.json)
+  function landingBounce(S, vmax, sup) {
+    if (S.flyT < FLY_MIN) return;
+    const T = [S.v[0], S.vy, S.v[1]], V = Math.hypot(T[0], T[1], T[2]); if (V < 1e-6) return;
+    const x = S.pos[0], z = S.pos[2], hAt = (px, pz) => { const h = supportAt(S, px, pz, sup + 3, sup + 3); return h === null ? sup : h; };
+    let nx = -(hAt(x + 1, z) - hAt(x - 1, z)) / 2, nz = -(hAt(x, z + 1) - hAt(x, z - 1)) / 2; const nl = Math.hypot(nx, 1, nz); nx /= nl; nz /= nl; const ny = 1 / nl;
+    const d = [T[0] / V, T[1] / V, T[2] / V], inner = d[0] * nx + d[1] * ny + d[2] * nz; if (inner >= 0) return;
+    const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2); if (refp <= 0) return;
+    const r = [d[0] - 2 * inner * nx, d[1] - 2 * inner * ny, d[2] - 2 * inner * nz];
+    S.reflV = [r[0] * 0.95 * V, r[2] * 0.95 * V]; S.reflVy = r[1] * REFL * V;
+    S.dash = false; S.dashT = 0; S.dashLock = true;                                           // gYm_OujiDashCancel
+    const spd = Math.max(0, Math.min(1, (S.fallT - FALL_MIN) / (FALL_MAX - FALL_MIN)));       // sGetSpeedRatio, airborne and hit the ground
+    if (spd * refp > 0) crumbleHit(S, spd * refp, V, vmax);
+    S.events.push({ type: 'bounce', v: S.reflVy, fall: T[1] });
+  }
   function crumbleHit(S, total, vIn, vmax) {                 // gYm_MonoCrumble
     if (total <= CR.angle || S.crumbleCool > 0) return;
     const smin = vmax * CR.spd, cs = Math.max(0, Math.min(vIn, vmax) - smin) / (vmax - smin); if (cs <= 0) return;
@@ -406,7 +423,7 @@
     else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
     const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
-    if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
+    if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; if (S.reflVy !== undefined) { S.vy = S.reflVy; S.reflVy = undefined; } }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
     else if (dir !== 0) {
       let ix = fx * dir, iz = fz * dir;
       // sCheckBreakInput: the input has to point within BrakeAngle (30 degrees) of straight against the motion. A brake starts only above BrakeSpeedRatio (45%)
@@ -525,10 +542,14 @@
         }
       }
     }
-    // vertical
+    // vertical. Flight bookkeeping is sStatFly: FlyTime counts frames in the air, FlyFallTime the frames moving down
+    if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }
     const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g;
     let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepW + Math.max(0, -S.vy), y - R + climbW + Math.max(0, -S.vy));
-    if (sup !== null && y - R <= sup) { y = sup + R; S.vy = 0; }
+    if (sup !== null && y - R <= sup) {
+      if (S.vy < 0 && !S.grounded && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, sup);   // landing from the air (sReflection, Fly branch, A107)
+      y = sup + R; S.vy = 0;
+    }
     S.pos[1] = y; S.grounded = !cw.on && sup !== null && Math.abs(y - R - sup) < 1e-3;
     // roll: the surface moves with the ball, axis = up x motion
     if (moved > 1e-6) {
