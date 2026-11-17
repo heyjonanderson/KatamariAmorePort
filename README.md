@@ -81,7 +81,7 @@ Reports I could not reproduce from the data. I will try to reproduce each one fi
 
 The data or code is in the app and nothing is in the way. This is the work queue.
 
-- **Find what blocks stage 2 (South American Ruins)** (A79, A98, A110) [M]. Tester says it cannot be finished. The bot also stalls at about 46 cm on S002. Wall climb is in but has never been played. Find the stuck spot with the bot and compare the wall or step height there with the climb limit.
+- **Stage 2 (South American Ruins) wall climb check** (A79, A98, A110, A115) [S]. Tester says it cannot be finished. The bot stall was its own planner (A115); with wall climb in the planner it clears the stage in 649 s. Still unplayed by a person: roll at the 20 cm step near x = -530 and say if the climb feels doable.
 - **Check the camera wall avoidance assumptions** (A112) [S]. The swing rule is from the binary: one ray, 10 + 75 degrees by how close the hit is, capped at 85 degrees, no easing. Still unconfirmed: where the ray starts, the swing axis, and what the blocked flag at +0x230 drives. Compare with a reference video of a camera against a wall.
 - **Steering by the engine’s angle rule (sTurn)** (A113, A76) [M]. The turn constants are the engine’s, but the port turns by stick power difference. The source turns by the combined stick angle with TurnFastAngleF/B and SideAngle, and has its own backward branch. Port it if steering feels off.
 - **Extra-stage result lines** (A104, A114) [S]. The EXTRA_RES lines (the King judging a mini-game score) belong to the Pac-Man, Tekken and Galaga stages, which are not ported. The achievement and unlock banners are built (A114).
@@ -90,8 +90,8 @@ The data or code is in the app and nothing is in the way. This is the work queue
 
 The path-planning bot clears a stage in code, with no person. Slow, and it plays worse than a human, so a loss here is a hint and not a verdict. Run with node tests/bot2.js S008.
 
-- **Clear the 12 new stages with the bot** (A104) [M]. Cleared so far: S009 (305 s on the latest code). S008 got to 195 cm (goal 186) but never caught its target TIMEHOP, which moves along a path and was at 98% of it with the ball 5 m up. S015 reached 51 cm (goal 47) but found nothing reachable: its target THEGUY01 sits where the bot cannot get. S010 had no result. The re-run of the rest on the final code had not finished when this was written.
-- **Bot clears for stages 2 and 4 to 6 inside the time limit** (A49, A59) [M]. The bot cannot finish these in time. S002 gets stuck around 46 cm. Not proof the stages are broken, but a stuck spot or a bad wall is the first thing to rule out.
+- **Clear the 12 new stages with the bot** (A104, A115) [M]. Cleared so far: S009 (305 s), S015 (337 s, after the ledge link). S008 got to 195 cm (goal 186) but never caught its target TIMEHOP, which moves along a path and was at 98% of it with the ball 5 m up. S010, S012 and S013 had no result and still need a re-run with the new planner.
+- **Bot clears for stages 4 to 6, and S002 inside the time limit** (A49, A59, A115) [M]. S002 is now cleared by the bot (649 s, over its 6 minute limit, A115): the stall at 46 cm was the planner not knowing wall climb. S004 to S006 still need a re-run with the new planner. The bot is slower than a person, so a late finish is a hint and not a verdict.
 - **Bot baselines after the bounces** (A103, A108) [S]. With the wall and landing bounce: S001 309 s, S003 482 s, S009 305 s, S011 508 s, all won (before the landing bounce: S001 358 s, S003 416 s). S008, S010, S012 and S013 produced no result in the re-run and still need a look. The old bot test also had to be fixed to allow the ball to shrink when a hit sheds objects. Re-run all of them after any physics change.
 
 ### Blocked or still being decoded
