@@ -266,3 +266,5 @@ Last updated: 2026-11-17.
 
 - 2026-11-17: sweep 3: MP_INF sections per mode from MonoService.cppi (A119, P21 closed), A51 marked as a deliberate choice
 - 2026-11-17: sweep 3: pickup test copied from sCheckHitMono (A29, P5), dash gesture read from OujiDash.cppi (A120)
+- 2026-11-17: sweep 3: collision kinds surveyed (P17b: kind 2 = no-climb boundary walls, kind 1 = flat catch-all floor), handedness derived (P20), P19/A45 checked against the shipped source (limit: HITSYS not shipped)
+- 2026-11-17: test bot (tests/bot2.js): intercepts moving targets, uses the engine pickup test for reach, remembers stuck spots. S001 to S004, S006, S009 and S010 win on the engine pickup code; S005 and S011 to S018 not confirmed yet
