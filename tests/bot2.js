@@ -60,6 +60,7 @@ for (let f = 0; f < maxF && !S.won && S.frame < maxF && !(STOPDIAM && S.diam >= 
     const r = plan.route; while (plan.idx < r.length - 1 && Math.hypot(r[plan.idx][0] * CELL - S.pos[0], r[plan.idx][1] * CELL - S.pos[2]) < Math.max(CELL * 1.5, K.radius(S) * 0.6)) plan.idx++;
     const w = r[Math.min(plan.idx + 2, r.length - 1)], want = Math.atan2(w[0] * CELL - S.pos[0], w[1] * CELL - S.pos[2]), e = ang(S.yaw, want);
     inp = { turn: Math.max(-1, Math.min(1, -e * 3)), fwd: Math.abs(e) < 1.0 ? 1 : 0 };
+    if (r.length - plan.idx <= 4 && Math.abs(e) > 0.25) inp.fwd = Math.abs(e) < 1.0 ? 0.3 : 0;   // last few cells (often a ledge or wall to climb): square up first, because the wall climb needs the heading and the input pointing into the wall for several frames
     noTarget = 0;
   } else { noTarget++; inp = { turn: 0.5, fwd: noTarget % 120 > 60 ? 1 : 0 }; /* wander a little: the planner can sit in a cell it thinks is blocked */ if (noTarget > 600) { log.push('no reachable catchable target at frame ' + S.frame + ' diam ' + S.diam.toFixed(2)); break; } }
   if (process.env.WATCH && S.frame >= +process.env.WATCH.split(',')[0] && S.frame < +process.env.WATCH.split(',')[1] && S.frame % 4 === 0) console.log('W', S.frame, S.pos.map(v => v.toFixed(1)).join(','), 'vy', S.vy.toFixed(2), 'gr', S.grounded, 'cw', S.cw.on, S.cw.top, S.cw.forbid, JSON.stringify(S.dbgClimb), 'v', S.v.map(v => v.toFixed(2)).join(','), 'diam', S.diam.toFixed(2), 'inp', JSON.stringify(inp));

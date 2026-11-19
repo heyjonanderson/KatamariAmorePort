@@ -518,7 +518,8 @@
     }
     // walls from the collision mesh
     let noClimb = false;                                                              // HIT_ATTR_DISABLE_CLIMB: a hit polygon with this attribute turns the wall climb off for the frame (sAttribute, KatamariHit.cppi); the attribute value is taken to be kind 2 (P17b)
-    for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.hit.kind[n[2]] === S.noClimbKind) noClimb = true; addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
+    let meshTop = -1e9;
+    for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.hit.kind[n[2]] === S.noClimbKind) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
     if (hitPow > 0 && !cw.on && !cwWasOn) crumbleHit(S, hitPow, vIn, vmax);   // sMonoCrumble does nothing while climbing
     S.v[0] = vx; S.v[1] = vz; S.speed = Math.hypot(vx, vz); if (S.rampLift) S.vy = Math.max(S.vy, 0);
     // wall climb: sCheckClimbWall decides, sEnableClimbWall / DisableClimbWall change state, sClimbWall lifts the ball
@@ -538,6 +539,8 @@
         }
         if (ok1 && !cw.on) { cw.speed = 0; cw.top = false; cw.norm = w.n.slice(); cw.startY = S.pos[1]; }
       }
+      if (!ok1 && cw.on && !cw.top && walls.length === 0 && dir !== 0 && S.pos[1] - R < cw.wallTop) ok1 = true;   // a sphere rising past a wall loses contact before its bottom clears the top (the engine tests several directions around the ball, so the contact lasts); keep climbing until the bottom is over the top (P19)
+      if (ok1 && !cw.on && walls.length === 1) cw.wallTop = walls[0].o ? walls[0].o.top : meshTop;
       if (ok1) { if (!cw.top) cw.eff = 1; cw.forbid = 0; cw.on = true; }
       else cwOff();
       if (cw.on) {                                                                      // sClimbWall
