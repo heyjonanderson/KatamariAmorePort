@@ -15,5 +15,11 @@ console.log('45 degrees: turn in 30 frames', diag.dyaw.toFixed(3), 'expected', w
 if (Math.abs(diag.dyaw - want) > 0.01) fails.push('45 degree turn rate off');
 const left = run({ L: 1, R: 1, sx: -Math.SQRT1_2, sz: Math.SQRT1_2 }, 30); if (Math.abs(left.dyaw + diag.dyaw) > 1e-9) fails.push('left should mirror right');
 const back = run({ L: -1, R: -1, sx: 0, sz: -1 }, 90), bb = back.dp[0] * Math.sin(back.y0) + back.dp[1] * Math.cos(back.y0); console.log('back along facing', bb.toFixed(1)); if (bb >= -5) fails.push('stick straight back should roll the ball backwards');
+{ // engine one-pad mapping
+  const fw = run({ L: 1, R: 1, pad: [0, 1] }, 90); if (Math.hypot(fw.dp[0] - fwd1.dp[0], fw.dp[1] - fwd1.dp[1]) > 0.5) fails.push('pad straight forward should match two sticks forward');
+  const sp = run({ L: 0, R: 0, pad: [0.8, 0] }, 20), spL = run({ L: 0, R: 0, pad: [-0.8, 0] }, 20); console.log('pad spin right', sp.dyaw.toFixed(3), 'left', spL.dyaw.toFixed(3));
+  if (Math.abs(sp.dyaw - 20 * 0.055) > 1e-6 || Math.abs(spL.dyaw + 20 * 0.055) > 1e-6) fails.push('pad side zone should spin at 0.055 a frame');
+  const bk = run({ L: 0, R: 0, pad: [0, -1] }, 40); if (Math.hypot(bk.dp[0], bk.dp[1]) > 1 || Math.abs(bk.dyaw) > 1e-9) fails.push('pad has no reverse');
+}
 if (fails.length) { console.log('FAIL', fails.join('; ')); process.exit(1); }
 console.log('PASS');

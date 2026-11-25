@@ -161,6 +161,11 @@ function restart() {
 function readInput() {
   const dash = !!(keys.ShiftLeft || keys.ShiftRight || keys.Space || touchDash), flip = !!(keys.KeyQ || keys.KeyE || touchFlip);
   const p = pads.S;
+  if (qs.get('ctl') === 'pad') {   // ?ctl=pad: the engine's one-pad mapping (sim padSticks, A121): spin zones at the sides, forward needs only a small push, no reverse
+    let r = 0, f = 0;
+    if (p) { r = (p.x - p.ox) / PAD_R; f = -(p.y - p.oy) / PAD_R; } else { f = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0); r = ((keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0)) * (f > 0 ? 0.3 : 1); }
+    const t = KSim.tank(Math.max(0, f), -r * 0.5); return { L: t.L, R: t.R, pad: [r, f], dash, flip };
+  }
   if (qs.get('ctl') === 'stick') {   // ?ctl=stick: one stick vector drives both sticks, the engine's angle rule steers (sim readCtrl, A121). Default stays the tank mix below
     let x = 0, y = 0;
     if (p) { x = (p.x - p.ox) / PAD_R; y = -(p.y - p.oy) / PAD_R; } else { x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0); y = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0); }

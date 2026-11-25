@@ -330,6 +330,16 @@
     else { msr = 0; mdir = 2; }
     return { turn, power, dir: mdir === 1 ? -1 : 1, mdir, phi, msr, moveTurn: false };
   }
+  // One touch pad to two sticks (FUN_00025e30, controller type 2, A121). r = push to the right, f = push forward, each -1..1 (32 px from the pad centre is full).
+  // Spin zones: a strong sideways push (0.5 to 1.25) with the other axis between -0.5 and 0.75 pulls the sticks apart. Otherwise below 0.05 forward only a sideways push spins (4 times r),
+  // and forward of that both sticks get the same vector, gains 8 and 8 up to 0.1 forward, then 20 sideways and 12 forward. There is no reverse. Orientation (which way is forward) is my reading, see A121
+  function padSticks(r, f) {
+    r = Math.max(-1, Math.min(1, r)); f = Math.max(-1, Math.min(1, f));
+    if (Math.abs(r) >= 0.5 && f >= -0.5 && f <= 0.75) { const q = Math.sign(r) * 10; return [[0, q], [0, -q]]; }
+    if (f < 0.05) return [[0, 4 * r], [0, -4 * r]];
+    const v = f < 0.1 ? [8 * r, 8 * f] : [20 * r, 12 * f];
+    return [v, v];
+  }
   // 1D sticks (up = forward), the form the keyboard mix and the bots use: a vertical vector per stick
   function readSticks(L, R) { return readCtrl([0, L], [0, R]); }
 
@@ -460,9 +470,10 @@
     if (S.ctrlOff > 0) { S.ctrlOff--; inp = { L: 0, R: 0, dash: false, flip: false }; }   // OujiControlDisableTime: no prince input for a few frames after a crush (A100)
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
     // single stick (inp.sx, inp.sz, x right, z forward): both sticks carry the same vector (A121). Otherwise two vertical sticks L and R
-    const st = inp.sx !== undefined ? readCtrl([inp.sx, inp.sz], [inp.sx, inp.sz]) : readSticks(inp.L, inp.R);
+    const pad = inp.pad ? padSticks(inp.pad[0], inp.pad[1]) : null;
+    const st = pad ? readCtrl(pad[0], pad[1]) : inp.sx !== undefined ? readCtrl([inp.sx, inp.sz], [inp.sx, inp.sz]) : readSticks(inp.L, inp.R);
     // The two-stick average power drops when you steer (one stick lower), which with the 0.4 plateau of the speed curve made steering crawl. The original's one-stick path (Ctrl4 combined stick) has no such drop, so single-stick and keyboard input pass their own push strength (A75)
-    if (inp.sx === undefined && inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
+    if (!pad && inp.sx === undefined && inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
     // quick turn (OSTAT Jump180): the original has a U-turn button at the bottom centre of the screen. Pressing it makes the prince hop over the ball and face the other way.
     // Timing is guessed (A66)
     if (inp.flip && !S.flipHeld && S.flipT === 0) { S.flipN = flipFrames(S); S.flipT = S.flipN; S.flipYaw0 = S.yaw; S.events.push({ type: 'flip' }); }
@@ -695,6 +706,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

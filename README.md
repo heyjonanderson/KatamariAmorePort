@@ -98,7 +98,7 @@ The path-planning bot clears a stage in code, with no person. Slow, and it plays
 
 Not in the shipped source files. Some can be pulled out of the compiled binary, which is how the physics table, the hop, the time limits, wall climb and the sound ids were found.
 
-- **Touch pad mapping (one pad)** (A121, A122, P11) [M]. The touch-to-stick code is found (FUN_00025e30: fixed pad centres, 32 px full deflection, spin zones, identical sticks elsewhere, constants read) but the axis signs do not agree between my reading of the branches and the twin-pad branch. Settle which pad direction is forward, then port the zones in place of the tank mix.
+- **Confirm the one-pad direction and make it the touch default** (A121) [S]. The engine’s one-pad mapping is ported (?ctl=pad). The one open point is which pad direction is forward in the original; the port assumes up. Check against a recording or the tester on a touch device, then switch touch over from the tank mix.
 - **Decode the original album and score layout** (A55, A114) [M]. The Records and Collection screens use the real art but my own text layout. What the album shows per item (pictures, which items count), the score screen rows and the Shop (an in-app purchase page, left out on purpose) are not decoded.
 - **Sound ids with no known trigger** (A101) [S]. Ids 14, 20 and 26 to 29 (game_08, game_14, game_27 to game_30), the lump sound (id 17) and splash (id 28) have no trigger in the port. The new-area sound (game_28) is still my guess.
 - **Path start point** (A37) [S]. Path followers start at the beginning of their curve. The initial position value is assumed zero.
