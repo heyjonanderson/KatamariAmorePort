@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Katamari Amore sound test</title>
+<style>body{font:15px system-ui,sans-serif;background:#14181f;color:#e8ecf2;margin:0;padding:14px 16px}h1{font-size:18px}h2{font-size:15px;margin:18px 0 6px;color:#9fb4d0}
+button{font:inherit;background:#2a3445;color:#e8ecf2;border:1px solid #435069;border-radius:6px;padding:6px 10px;margin:3px 4px 3px 0;cursor:pointer}button:active{background:#3b4a63}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:2px}.note{color:#8a96a8;font-size:13px}</style>
+<h1>Sound test</h1>
+<p class="note">Tap a button to play. Music buttons play the intro part (A) then loop (B), like the game does. Use this to name the six menu tracks (KD_BGM_00 to 06) and tell me which scene should use which.</p>
+<button id="stop">Stop music</button>
+<h2>Menu and scene music (the game's BGM ids 0 to 6)</h2><div id="m" class="row"></div>
+<h2>Stage music</h2><div id="s" class="row"></div>
+<h2>Effects</h2><div id="e" class="row"></div>
+<script src="audio.js?v=39"></script>
+<script>
+const $=id=>document.getElementById(id);
+const menu=[['KD_BGM_00','0: title and menus (current)'],['KD_BGM_01','1: extra mini-game scene'],['KD_BGM_02','2: extra mini-game scene'],['BGM_ST00','3: Time Attack (every stage)'],['KD_BGM_04','4: result screen'],['KD_BGM_05','5: collection screen'],['KD_BGM_06','6: opening story']];
+function btn(box,label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=()=>{KSnd.start();fn();};$(box).appendChild(b);}
+menu.forEach(([n,l])=>btn('m',l,()=>KSnd.bgm(n)));
+const st=[1,2,3,4,5,6,8,9,10,11,12,13,15,16,17,18,19,20];
+st.forEach(i=>btn('s','S'+String(i).padStart(3,'0'),()=>KSnd.bgm('BGM_ST'+String(i).padStart(2,'0'))));
+const se=['KD_SE_common_00','KD_SE_common_01','KD_SE_common_02','KD_SE_game_00','KD_SE_game_01','KD_SE_game_02','KD_SE_game_07','KD_SE_game_19','KD_SE_game_20','KD_SE_res_00','KD_SE_res_01','KD_SE_over_00','KD_SE_over_01'];
+se.forEach(n=>btn('e',n.replace('KD_SE_',''),()=>KSnd.se(n)));
+for(let i=1;i<=37;i++){const n='KD2_SE_mono_'+String(i).padStart(2,'0');btn('e','mono '+i,()=>KSnd.se(n));}
+$('stop').onclick=()=>KSnd.stopBgm();
+</script>

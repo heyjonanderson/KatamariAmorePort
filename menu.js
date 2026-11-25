@@ -81,7 +81,7 @@ function recScreen(m) {
 
 // Collection: the album book of ALBUM.dat. Items stuck on the ball when a story stage was cleared; the achievement and Extra stage counts come from the pickup rules in MonoHit.cppi (A114)
 function albScreen(si) {
-  show('sAlb'); KT.setPack(pack); const names = KT.group('STAGE_NAME'), al = KT.group('ALBUM');
+  show('sAlb'); KSnd.bgm('KD_BGM_05'); KT.setPack(pack); const names = KT.group('STAGE_NAME'), al = KT.group('ALBUM');
   let col = { ach: {}, extra: [0, 0, 0], alb: {} }; try { col = Object.assign(col, JSON.parse(localStorage.getItem('kam_col') || '{}')); } catch (e) {}
   const st = STAGES()[si], items = Object.entries((col.alb || {})[st] || {}).sort((a, b) => a[0].localeCompare(b[0]));
   $('abHdr').textContent = al[1] || 'Collection';
@@ -91,7 +91,7 @@ function albScreen(si) {
   const nAch = Object.keys(col.ach || {}).length;
   $('abName').textContent = names[si] || st; $('abCount').textContent = items.length;
   $('abInfo').textContent = (al[0] || '').replace('\n', ' ') + '\n\n' + nAch + ' achievements  \u00b7  Extra item ' + (col.extra && col.extra[pack - 1] ? 'found' : 'not found');
-  $('abStage').textContent = (names[si] || st) + ' \u25B8'; $('abStage').onclick = () => albScreen((si + 1) % PLAYABLE); $('abBack').onclick = stageScreen;
+  $('abStage').textContent = (names[si] || st) + ' \u25B8'; $('abStage').onclick = () => albScreen((si + 1) % PLAYABLE); $('abBack').onclick = () => { KSnd.bgm('KD_BGM_00'); stageScreen(); };
 }
 
 // Opening story: played from the original's script tables by intro.js (data/intro.json, A107). The strings are STORY_DEMO1 to 3 (16, 18 and 16 strings: the last two or so are the lines shown during the ending scroll)
@@ -126,5 +126,5 @@ async function brief(i) {
 (async function () {
   KT.fit($('box')); await KT.load();
   $('tLang').textContent = KT.LANGS.find(x => x[0] === KT.lang)[1] + ' \u25B8'; $('tLang').onclick = e => { e.stopPropagation(); KT.nextLang(); location.reload(); };
-  if (qs.get('screen') === 'pack') packScreen(); else if (qs.get('screen') === 'stage') stageScreen(); else if (qs.get('screen') === 'mode') modeScreen(); else if (qs.get('screen') === 'demo') demo(stageScreen); else logo();
+  if (qs.get('screen')) KSnd.bgm('KD_BGM_00'); if (qs.get('screen') === 'pack') packScreen(); else if (qs.get('screen') === 'stage') stageScreen(); else if (qs.get('screen') === 'mode') modeScreen(); else if (qs.get('screen') === 'demo') demo(stageScreen); else logo();
 })();

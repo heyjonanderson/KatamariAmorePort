@@ -418,7 +418,7 @@ function showResult() {
   const endN = S.won ? KT.pages([names[0], names[1]], v).length : 0, pages = KT.pages(names, v);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
   const done = () => { $('rRetry').style.display = $('rMenu').style.display = 'block'; };
-  if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done, i => { if (S.won && i === endN) KSnd.se('KD_SE_res_00'); });   // success: res_00 once the end dialog is over (A94)
+  if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done, i => { if (S.won && i === endN) { KSnd.se('KD_SE_res_00'); setTimeout(() => { if (resShown) KSnd.bgm('KD_BGM_04'); }, 2600); } });   // success: res_00 once the end dialog is over (A94)
   failSnd = !S.won; if (failSnd) { KSnd.se('KD_SE_over_01'); (function again() { if (!failSnd) return; setTimeout(() => { if (!failSnd) return; KSnd.se('KD_SE_over_00' + (failN++ % 2 ? '_2' : '')); again(); }, (KSim.FPS + Math.floor(Math.random() * 4 * KSim.FPS)) / KSim.FPS * 1000); })(); }   // failure: over_01, then over_00 / over_00_2 alternating every 1 to 5 s (FUN_0003342c, A94)
 }
 $('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclick = () => { failSnd = false; location.href = 'menu.html?screen=stage&pack=' + PACK + '&mode=' + MODE; };
