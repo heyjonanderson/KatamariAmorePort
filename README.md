@@ -43,6 +43,8 @@ Each item lists its entries in ASSUMPTIONS.md. The same list is kept as a page t
 
 Built and bot-tested, but only a person can say if it feels right. Ordered so you can run through them in one sitting.
 
+- **Rolling direction** (A124, A125) [S]. The ball now rolls forward. Roll and watch the ball and the stuck objects (A124).
+- **Time Attack music and iPad sound** (A124, A125) [S]. Time Attack plays BGM_ST00 on every stage. Music and effects should start on the first tap on iPad Safari and Android Firefox, with no page zoom (A125).
 - **Catch size and growth pace** (A78) [M]. Play stage 1 against the John’s Room video: it shows 6 cm at 30 s, 24 cm at 100 s, 49 cm at 180 s and 124 cm at the end. Say if the port grows faster or slower, and if objects stick when they should not or bounce off when they should stick. The bot is slower than a player, so it cannot judge this.
 - **Rolling, steering, braking** (A71, A75) [M]. Drag, stick curve and brake rule are the engine’s numbers. Check steering at speed and stopping. Keyboard and touch push strength (A75) is my choice, so that is the part most likely to feel off.
 - **Listen to all of the sound** (A109, P23, A53, A99, A101, A102, A104) [M]. Important: sound was silently broken from 2026-11-06 until today (a loader bug, A109), so nothing in the port has ever been heard, by me or by testers. It is fixed and checked by decoding in a browser. Now everything needs a first listen: pickup blips, catch loops, crumble, crush, landing, spin and dash, brake, U-turn, the 30-second warning, the end whistle, the camera step sound, stage music per stage, and the music and effects in the three opening stories. Report anything that sounds like the wrong effect. Nothing plays for rolling, and the new-area sound is still my guess.
@@ -70,6 +72,8 @@ Built and bot-tested, but only a person can say if it feels right. Ordered so yo
 
 Reports I could not reproduce from the data. I will try to reproduce each one first, but a screenshot or a few words from the tester will settle them.
 
+- **Fidelity or improvements** (Tester 2026-11-25) [S]. Tester asks if the port should match the original or improve it (a minute more, better controls, no repeating object sounds, see through cutouts, size to roll up in the Collection). A call is needed, see decisions.
+- **Name the six menu tracks** (Tester 2026-11-25) [S]. Which KD_BGM file is Overture I, Walking On A Star, Fugue #7777 and Lovely Angel. A sound test page will let a tester say.
 - **Stage 1 trophy rotated 90 degrees** (A87) [S]. The placements are upright with yaw plus or minus 90, and I cannot see anything wrong in the data. Which trophy, and which way should it face? A screenshot would do.
 - **One more minute on short Time Attack stages** (A92, A110) [S]. Tester asks for 60 s more on short stages to be fairer than the original. The limits now are the original’s (A92) and match the two reference videos, so this would be a deliberate change. Decision needed: keep the original, or add an Easy time option.
 - **Movement like We Love Katamari** (A83, A110) [M]. Tester suggests We Love Katamari’s movement and rolling code. None of it is in the files here; the port uses this app’s own drag, acceleration, brake and stick tables (A27, A71). Need to know which part feels different, with a stage and a situation.
@@ -82,6 +86,25 @@ Reports I could not reproduce from the data. I will try to reproduce each one fi
 
 The data or code is in the app and nothing is in the way. This is the work queue.
 
+- **Ramps and slopes up and down (High School, City Square, Big City, Kid's Room pedestal, Western Europe)** (Tester 2026-11-25) [M]. Four testers reports. Find the cases with the bot and the probe, compare the ramp rules (wall angle 66.6, climb height, the ramp reach) with the original. Also the stage 2 first slope: it can be climbed too early; the original needs about 40 cm (New Area).
+- **Stage 2 fish statue ramp and crate start** (Tester 2026-11-25) [S]. The fish statues that form the ramp face the wrong way to be climbed, and Time Attack cannot reach the diameter needed for the first incline. Check the statue facing (A36, A86) and the climb limit at 40 cm.
+- **Katamari slides while climbing** (Tester 2026-11-25) [M]. Lock the ball's x and z while it climbs a wall or object (tester). Check the continuation rule in A79 and the engine's climb state.
+- **Katamari slides all over the place** (Tester 2026-11-25) [M]. Tester says it slides on turns. Compare grip and drag with the engine (A71) at several sizes; may be the same cause as the slopes.
+- **Speed in big stages and the fall speed when huge** (Tester 2026-11-25) [M]. Western Europe, Big City, Discovery Age Port Town and Shopping Mall feel slow, and the ball falls too slowly when huge (Space Center). Check the speed table and gravity against the original at 10 m and above.
+- **Draw distance** (Tester 2026-11-25) [S]. Still short in the John's Room hallway and Roman Coliseum. A52 has the engine's far plane; check which pair is applied, and the object fade and cull distances.
+- **Camera: top down in Secret Lab and Space Colony, too close in City Square and Shopping Mall** (Tester 2026-11-25) [M]. Check the stage camera rows for those stages (A102, A110), and the wall swing (A112) which may be firing in open rooms. Needs a screenshot compare with the videos.
+- **Exact Size and Eternal HUD** (Tester 2026-11-25) [S]. Tester: a Stop Rolling button under the size display, hide the timer in both, hide the size in Exact Size. Needs a call on what is original (see decisions).
+- **Collection in all four modes** (Tester 2026-11-25) [M]. Objects should be added in Time Attack, Eternal and Exact Size too. The original sets the album bits for every mode (FUN_000413b4); the port saves only for a won Story run (A114).
+- **Menu order: pack, level, mode** (Tester 2026-11-25) [S]. Tester wants Pack, Level, Mode; the port asks Pack, Mode, Level. Decode the original's screen order first (A38).
+- **Music per screen** (Tester 2026-11-25) [M]. Add KD_BGM_01, 04 and 05 from the IPA, add a sound test page, start the title, King and result tracks from the binary's scene list (A125). Needs the track names matched to files.
+- **Pizzas face the wrong way** (Tester 2026-11-25) [S]. Compare with the original footage (the pizzas in South American Ruins face the camera side up there). Look at the object's placement rotation and any facing rule.
+- **Rolled up objects stick out too far** (Tester 2026-11-25) [S]. Umbrellas in City Square and others sit well outside the ball. Check the attach depth rule and the core size (A111).
+- **Time Attack scores 2 mm low** (Tester 2026-11-25) [S]. Western Europe and Big City: the port gets 705 m 36 cm 0 mm with all objects, the original 705 m 36 cm 2 mm. Likely single precision in the engine's volume sum. Test the sum in float32.
+- **Viewer scenes are flipped** (Tester 2026-11-25) [S]. Viewer only. Check the mirror (P20) is applied in viewer.js too.
+- **Flower icon in the top left is not animated** (Tester 2026-11-25) [M]. The rainbow flower badge animates in the original. Find the frames in the HUD art and the timing in the binary.
+- **The King's head in the dialog** (Tester 2026-11-25) [M]. Shown before the stage, on an achievement, at 1 minute left and with the end dialog. Needs the face art and the facereq calls (A93, A114).
+- **Water** (Tester 2026-11-25) [L]. Water should have no collision and give the prince a swimming animation (Discovery Age Port Town). Needs the water data found: a hit kind, a map model, or a rule in the binary.
+- **Safari and Firefox on Android checks** (Tester 2026-11-25) [S]. Audio unlock and zoom guard are in (A125). Firefox on Android flashes when dash is pressed over and over; cause not known.
 - **Stage 2 (South American Ruins) wall climb check** (A79, A98, A110, A115) [S]. Tester says it cannot be finished. The bot stall was its own planner (A115); with wall climb in the planner it clears the stage in 649 s. Still unplayed by a person: roll at the 20 cm step near x = -530 and say if the climb feels doable.
 - **Check the camera wall avoidance assumptions** (A112) [S]. The swing rule is from the binary: one ray, 10 + 75 degrees by how close the hit is, capped at 85 degrees, no easing. Still unconfirmed: where the ray starts, the swing axis, and what the blocked flag at +0x230 drives. Compare with a reference video of a camera against a wall.
 - **Extra-stage result lines** (A104, A114) [S]. The EXTRA_RES lines (the King judging a mini-game score) belong to the Pac-Man, Tekken and Galaga stages, which are not ported. The achievement and unlock banners are built (A114).
@@ -116,6 +139,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Tester notes 2026-11-25 read (Discord log and the issues doc). Done from them: the ball rolled backwards (fixed, A124), Time Attack now plays the stage 0 track on every stage as the binary does, the unused new-area sound and toast are gone, iPad and Android audio unlock and page zoom guards (A125). 19 more items are queued under I can do now.
 - Camera wall ray start confirmed to be the ball position (A112). Menu layout looked at: it is code (tweened objects with start and end positions per screen), not data, so an exact port is a per-screen decode of the menu range; the size of that job is now written in A38.
 - Sound id triggers closed out: every call of the original sound player was listed. Ids 14, 26, 27 and 29 are never played (unused leftovers), id 20 is the camera pull back (already ported). The port's invented new-area sound and toast are removed because the original has neither.
 - Unused stage fields (A91) traced to their readers in the binary: +0x44 has none, +0x48 / +0x4c (5 and 1000) scale the result screen picture, +0x54 is the fall height already used. The search turned up one real mechanic that is not ported (A123: stuck objects are hidden once deep in a growing ball when a kind has more than 90 stuck).

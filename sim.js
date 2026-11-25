@@ -674,9 +674,9 @@
     // roll: the surface moves with the ball, axis = up x motion
     if (moved > 1e-6) {
       const axis = norm([mz, 0, -mx]);
-      S.R = mmul(axisAngle(axis, -moved / R), S.R);
+      S.R = mmul(axisAngle(axis, moved / R), S.R);   // the contact point must move back relative to the ball's centre: tests/roll.js (A124). The sign was reversed before (tester: rolling backwards)
     }
-    if (S.wheelSpin || (S.dS.start && S.wheelSpd > 0)) { const ax2 = norm([Math.cos(S.yaw), 0, -Math.sin(S.yaw)]); S.R = mmul(axisAngle(ax2, -S.wheelSpd / R), S.R); }   // mWheelSpinRot: the ball spins in place about the camera X axis (w = spin speed / radius)
+    if (S.wheelSpin || (S.dS.start && S.wheelSpd > 0)) { const ax2 = norm([Math.cos(S.yaw), 0, -Math.sin(S.yaw)]); S.R = mmul(axisAngle(ax2, S.wheelSpd / R), S.R); }   // mWheelSpinRot: the ball spins in place about the camera X axis (w = spin speed / radius)
     // fell through the map (KatamariRecover.cppi): when the ball is 'bottom' cm below the floor line it goes back to the recover point (the start), keeping what it has picked up (A56)
     const rc = S.recover; if (rc && S.pos[1] < -rc[0]) {
       S.pos = [rc[1], Math.max(-rc[2], 5) + S.diam, rc[3]]; S.vy = 0; S.v = [0, 0]; S.speed = 0; S.yaw = rc[4]; dashCancel(S, true); S.events.push({ type: 'recover' });

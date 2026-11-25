@@ -6,7 +6,7 @@
 <title>Katamari Amore web port</title>
 <link rel="stylesheet" href="ui.css?v=38">
 <style>
-  html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #hud { pointer-events: none; }
   #bDash { position: fixed; right: 18px; bottom: calc(26% + 6px); width: 84px; height: 84px; border-radius: 50%; border: 3px solid #fff8; background: #ff7a2a99; color: #fff; font: bold 15px system-ui; display: none; touch-action: none; }
@@ -38,6 +38,11 @@
 </div>
 <div id="msg"><div id="msgt"></div><button id="bAgain">Play again</button></div>
 <div id="load"></div>
+<script>
+// iPad Safari ignores user-scalable=no: block pinch and double tap zoom (a quick second tap on a button while another finger is down zoomed the page, tester 2026-11-20)
+for (const e of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(e, ev => ev.preventDefault(), { passive: false });
+let lastTE = 0; document.addEventListener('touchend', ev => { const n = Date.now(); if (n - lastTE < 350 && !(ev.target.closest && ev.target.closest('#pause, #res'))) ev.preventDefault(); lastTE = n; }, { passive: false });
+</script>
 <script src="load.js?v=38"></script>
 <script src="audio.js?v=38"></script>
 <script src="text.js?v=38"></script>

@@ -35,8 +35,16 @@
     const b = await load(name); if (!b) return; const s = ctx.createBufferSource(); s.buffer = b;
     if (vol !== undefined && vol !== 1) { const g = ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(seGain); } else s.connect(seGain); s.start();
   }
-  function start() { if (started) return; if (!ensure()) return; started = true; if (ctx.state === 'suspended') ctx.resume(); if (wantBgm) bgm(wantBgm); }
+  // iOS Safari only unlocks audio from 'touchend' or 'click' (not touchstart or pointerdown) and can re-suspend or 'interrupt' the context, so every gesture tries to resume it until it reports running,
+  // and a silent buffer is played in the same gesture. Only then are the pending music and effects started (A125, tester: music and sounds started late on iPad Safari and Firefox on Android)
+  function start() {
+    if (!ensure()) return;
+    if (ctx.state !== 'running') { try { const r = ctx.resume(); if (r && r.then) r.then(settle, () => { }); } catch (e) { } try { const b = ctx.createBuffer(1, 1, 22050), n = ctx.createBufferSource(); n.buffer = b; n.connect(ctx.destination); n.start(0); } catch (e) { } }
+    settle();
+  }
+  function settle() { if (started || !ctx || ctx.state !== 'running') return; started = true; if (wantBgm) bgm(wantBgm); }
   function setMuted(m) { muted = !!m; try { localStorage.setItem('kmute', muted ? '1' : '0'); } catch (e) { } if (master) master.gain.value = muted ? 0 : 1; }
-  for (const ev of ['pointerdown', 'keydown', 'touchstart']) root.addEventListener(ev, start, { passive: true });
+  for (const ev of ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click', 'mousedown']) root.addEventListener(ev, start, { passive: true });
+  if (root.document) root.document.addEventListener('visibilitychange', () => { if (!root.document.hidden && ctx && ctx.state !== 'running') { started = false; start(); } });
   root.KSnd = { bgm, stopBgm, se, start, setMuted, isMuted: () => muted, preload: names => { if (started && ensure()) names.forEach(load); } };
 })(typeof window !== 'undefined' ? window : globalThis);
