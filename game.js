@@ -413,8 +413,8 @@ function showResult() {
   else if (MODE === 'exact') { const e = exactErr(); names = [e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
   else if (MODE === 'eternal') names = ['ETER_RES'];
   else names = ['TIME_RES01', mm < mis.ta_goal_mm ? 'TIME_RES02' : 'TIME_RES03'];   // time attack: under the stage's size threshold or not
-  if (S.won) names.unshift({ story: 'STORY_END', timeattack: 'TIME_END', exact: 'SIZE_END', eternal: 'ETER_END' }[MODE]);   // the success path (FUN_00033544 > FUN_00033620) plays the mode's own two-line goodbye before the result; the failure path (FUN_0003342c) goes straight to STORY_FAIL (A93)
-  const endN = S.won ? KT.pages([names[0]], v).length : 0, pages = KT.pages(names, v);
+  if (S.won) names.unshift({ story: 'STORY_END', timeattack: 'TIME_END', exact: 'SIZE_END', eternal: 'ETER_END' }[MODE], 'END_COM');   // the success path (FUN_00033544 > FUN_00033620) plays the mode's own two-line goodbye, then END_COM ("Royal Rainbow!", FUN_0004014c right after the goodbye) before the result; the failure path (FUN_0003342c) goes straight to STORY_FAIL (A93)
+  const endN = S.won ? KT.pages([names[0], names[1]], v).length : 0, pages = KT.pages(names, v);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
   const done = () => { $('rRetry').style.display = $('rMenu').style.display = 'block'; };
   if (dlgRes) dlgRes.stop(); dlgRes = KT.dialog($('rDlg'), pages, done, i => { if (S.won && i === endN) KSnd.se('KD_SE_res_00'); });   // success: res_00 once the end dialog is over (A94)
