@@ -86,21 +86,10 @@ Reports I could not reproduce from the data. I will try to reproduce each one fi
 
 The data or code is in the app and nothing is in the way. This is the work queue.
 
-- **Ramps and slopes up and down (High School, City Square, Big City, Kid's Room pedestal, Western Europe)** (Tester 2026-11-25) [M]. Four testers reports. Find the cases with the bot and the probe, compare the ramp rules (wall angle 66.6, climb height, the ramp reach) with the original. Also the stage 2 first slope: it can be climbed too early; the original needs about 40 cm (New Area).
-- **Stage 2 fish statue ramp and crate start** (Tester 2026-11-25) [S]. The fish statues that form the ramp face the wrong way to be climbed, and Time Attack cannot reach the diameter needed for the first incline. Check the statue facing (A36, A86) and the climb limit at 40 cm.
 - **Katamari slides while climbing** (Tester 2026-11-25) [M]. Lock the ball's x and z while it climbs a wall or object (tester). Check the continuation rule in A79 and the engine's climb state.
 - **Katamari slides all over the place** (Tester 2026-11-25) [M]. Tester says it slides on turns. Compare grip and drag with the engine (A71) at several sizes; may be the same cause as the slopes.
-- **Speed in big stages and the fall speed when huge** (Tester 2026-11-25) [M]. Western Europe, Big City, Discovery Age Port Town and Shopping Mall feel slow, and the ball falls too slowly when huge (Space Center). Check the speed table and gravity against the original at 10 m and above.
 - **Draw distance** (Tester 2026-11-25) [S]. Still short in the John's Room hallway and Roman Coliseum. A52 has the engine's far plane; check which pair is applied, and the object fade and cull distances.
-- **Camera: top down in Secret Lab and Space Colony, too close in City Square and Shopping Mall** (Tester 2026-11-25) [M]. Check the stage camera rows for those stages (A102, A110), and the wall swing (A112) which may be firing in open rooms. Needs a screenshot compare with the videos.
-- **Exact Size and Eternal HUD** (Tester 2026-11-25) [S]. Tester: a Stop Rolling button under the size display, hide the timer in both, hide the size in Exact Size. Needs a call on what is original (see decisions).
-- **Collection in all four modes** (Tester 2026-11-25) [M]. Objects should be added in Time Attack, Eternal and Exact Size too. The original sets the album bits for every mode (FUN_000413b4); the port saves only for a won Story run (A114).
-- **Menu order: pack, level, mode** (Tester 2026-11-25) [S]. Tester wants Pack, Level, Mode; the port asks Pack, Mode, Level. Decode the original's screen order first (A38).
-- **Music per screen** (Tester 2026-11-25) [M]. Add KD_BGM_01, 04 and 05 from the IPA, add a sound test page, start the title, King and result tracks from the binary's scene list (A125). Needs the track names matched to files.
-- **Pizzas face the wrong way** (Tester 2026-11-25) [S]. Compare with the original footage (the pizzas in South American Ruins face the camera side up there). Look at the object's placement rotation and any facing rule.
 - **Rolled up objects stick out too far** (Tester 2026-11-25) [S]. Umbrellas in City Square and others sit well outside the ball. Check the attach depth rule and the core size (A111).
-- **Time Attack scores 2 mm low** (Tester 2026-11-25) [S]. Western Europe and Big City: the port gets 705 m 36 cm 0 mm with all objects, the original 705 m 36 cm 2 mm. Likely single precision in the engine's volume sum. Test the sum in float32.
-- **Viewer scenes are flipped** (Tester 2026-11-25) [S]. Viewer only. Check the mirror (P20) is applied in viewer.js too.
 - **Flower icon in the top left is not animated** (Tester 2026-11-25) [M]. The rainbow flower badge animates in the original. Find the frames in the HUD art and the timing in the binary.
 - **The King's head in the dialog** (Tester 2026-11-25) [M]. Shown before the stage, on an achievement, at 1 minute left and with the end dialog. Needs the face art and the facereq calls (A93, A114).
 - **Water** (Tester 2026-11-25) [L]. Water should have no collision and give the prince a swimming animation (Discovery Age Port Town). Needs the water data found: a hit kind, a map model, or a rule in the binary.
@@ -139,6 +128,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Tester items built (2026-11-25): placement rotation signs fixed from resting tests, which turns pizzas, the lying trophy and tilted props (A136); camera ray one-sided like the engine (A134); Exact Size and Eternal HUD (A129); collection in all modes (A127); menu order pack, stage, mode (A128); mirrored viewer (A130); KD_BGM_01, 04 and 05 added with collection and result music and a sound test page (A132); area walls cannot be climbed (A126); 2 mm gap investigated (A133); `?view=wide` option (A135).
 - Tester notes 2026-11-25 read (Discord log and the issues doc). Done from them: the ball rolled backwards (fixed, A124), Time Attack now plays the stage 0 track on every stage as the binary does, the unused new-area sound and toast are gone, iPad and Android audio unlock and page zoom guards (A125). 19 more items are queued under I can do now.
 - Camera wall ray start confirmed to be the ball position (A112). Menu layout looked at: it is code (tweened objects with start and end positions per screen), not data, so an exact port is a per-screen decode of the menu range; the size of that job is now written in A38.
 - Sound id triggers closed out: every call of the original sound player was listed. Ids 14, 26, 27 and 29 are never played (unused leftovers), id 20 is the camera pull back (already ported). The port's invented new-area sound and toast are removed because the original has neither.
