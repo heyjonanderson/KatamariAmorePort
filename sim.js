@@ -31,8 +31,9 @@
   const ry = a => { const c = Math.cos(a), s = Math.sin(a); return [c,0,s, 0,1,0, -s,0,c]; };
   const rz = a => { const c = Math.cos(a), s = Math.sin(a); return [c,-s,0, s,c,0, 0,0,1]; };
   const D2R = Math.PI / 180;
-  // placement euler (file degrees) -> view space. Decoded from the loader (A97): S = Sz(-rz) Sy(-ry) Sx(rx)
-  const eulerView = (x, y, z) => mmul(rz(-z * D2R), mmul(ry(-y * D2R), rx(x * D2R)));
+  // placement euler (file degrees) -> view space: Sz(+rz) Sy(-ry) Sx(-rx). Order from the loader (A97); the signs come from resting tests, not the loader (A136): this combination
+  // puts the lowest box corner of 56 more tilted objects on the surface than the A97 signs did, and loses 2 (tests/placerot.js)
+  const eulerView = (x, y, z) => mmul(rz(z * D2R), mmul(ry(-y * D2R), rx(-x * D2R)));
   function axisAngle(ax, ang) {
     const c = Math.cos(ang), s = Math.sin(ang), t = 1 - c, [x, y, z] = ax;
     return [t*x*x+c, t*x*y-s*z, t*x*z+s*y,  t*x*y+s*z, t*y*y+c, t*y*z-s*x,  t*x*z-s*y, t*y*z+s*x, t*z*z+c];

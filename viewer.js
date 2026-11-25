@@ -87,7 +87,7 @@ async function loadGroup(stage, tag) {
 
 // Logic space (placements, collision) is z-mirrored relative to the visual map: view = (x, y, -z), angles: ry -> -ry, rx -> -rx, rz -> rz.
 // Verified: every placed object rests on a visual surface only with this flip (see SPEC.md).
-function placeMat(x, y, z, rx, ry, rz) { const R = M.mul(M.rz(-rz), M.mul(M.ry(-ry), M.rx(rx))); R[12] = x; R[13] = y; R[14] = -z; return R; }
+function placeMat(x, y, z, rx, ry, rz) { const R = M.mul(M.rz(rz), M.mul(M.ry(-ry), M.rx(-rx))); /* same as sim.js eulerView (A136) */ R[12] = x; R[13] = y; R[14] = -z; return R; }
 let items = [], coll = null;
 function layoutMap(g) { return g.man.models.map(m => ({ g, m, mat: M.trs([0,0,0], 1) })); }
 function layoutGallery(g) {

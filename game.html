@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=40">
+<link rel="stylesheet" href="ui.css?v=41">
 <style>
   html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
@@ -45,10 +45,10 @@
 for (const e of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(e, ev => ev.preventDefault(), { passive: false });
 let lastTE = 0; document.addEventListener('touchend', ev => { const n = Date.now(); if (n - lastTE < 350 && !(ev.target.closest && ev.target.closest('#pause, #res'))) ev.preventDefault(); lastTE = n; }, { passive: false });
 </script>
-<script src="load.js?v=40"></script>
-<script src="audio.js?v=40"></script>
-<script src="text.js?v=40"></script>
-<script src="sim.js?v=40"></script>
-<script src="game.js?v=40"></script>
+<script src="load.js?v=41"></script>
+<script src="audio.js?v=41"></script>
+<script src="text.js?v=41"></script>
+<script src="sim.js?v=41"></script>
+<script src="game.js?v=41"></script>
 </body>
 </html>
