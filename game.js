@@ -363,21 +363,22 @@ function drawHud() {
   echoDraw(W, H);
   const gs = Math.max(120, Math.min(190, Math.min(W, H) * 0.3));
   // size gauge: green gear, rainbow fills outward from the corner as the ball grows toward the goal
-  const prog = Math.max(0, Math.min(1, (S.diam - S.startDiam) / (S.goal - S.startDiam)));
+  const prog = MODE === 'exact' ? 0 : Math.max(0, Math.min(1, (S.diam - S.startDiam) / (S.goal - S.startDiam)));
   if (UI.SIZEB) hx.drawImage(UI.SIZEB, 0, 0, gs, gs);
   if (UI.SIZEF) { hx.save(); hx.beginPath(); hx.moveTo(0, 0); hx.arc(0, 0, gs * (0.12 + 0.9 * prog), 0, Math.PI / 2); hx.closePath(); hx.clip(); hx.drawImage(UI.SIZEF, 0, 0, gs, gs); hx.restore(); }
   // size number
-  const nh = gs * 0.26; hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiamHud(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore();
+  const nh = gs * 0.26; if (MODE !== 'exact') { hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiamHud(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore(); }   // Exact Size: the size is the puzzle, so it is not shown (tester)
   // goal marker text
   hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : MODE === 'exact' ? 'make it ' + fmtDiam(S.goal) : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
   // timer, as in the original: minutes left in white beside a clock whose needle sweeps once a minute. The last minute turns red and counts seconds (A70)
   const inf = !isFinite(S.timeLimit), el = S.frame / KSim.FPS, left = inf ? el : Math.max(0, S.timeLimit - el), ts = Math.max(64, Math.min(96, Math.min(W, H) * 0.16)), tx = W - ts - 12, ty = 12;
   const lastMin = !inf && left < 60, face = lastMin ? UI.TIMERH : UI.TIMER;
-  if (face) hx.drawImage(face, tx, ty, ts, ts);
-  { const cx = tx + ts / 2, cy = ty + ts / 2, a = (el % 60) / 60 * Math.PI * 2, len = ts * 0.4, sx = Math.sin(a), sy = -Math.cos(a), px = -sy, py = sx, bw = ts * 0.045;
+  const showTimer = MODE !== 'exact' && MODE !== 'eternal';   // no clock in Exact Size and Eternal (tester)
+  if (face && showTimer) hx.drawImage(face, tx, ty, ts, ts);
+  if (showTimer) { const cx = tx + ts / 2, cy = ty + ts / 2, a = (el % 60) / 60 * Math.PI * 2, len = ts * 0.4, sx = Math.sin(a), sy = -Math.cos(a), px = -sy, py = sx, bw = ts * 0.045;
     hx.beginPath(); hx.moveTo(cx + sx * len, cy + sy * len); hx.lineTo(cx + px * bw, cy + py * bw); hx.lineTo(cx - px * bw, cy - py * bw); hx.closePath(); hx.fillStyle = '#fff'; hx.fill();
     hx.beginPath(); hx.arc(cx, cy, ts * 0.06, 0, Math.PI * 2); hx.fillStyle = '#fff'; hx.fill(); }
-  { const n = lastMin ? Math.ceil(left) : Math.floor(left / 60), str = String(Math.min(99, n)).padStart(2, '0'), sh = lastMin ? 'NUMO' : 'NUMW', nh2 = ts * 0.46;
+  if (showTimer) { const n = lastMin ? Math.ceil(left) : Math.floor(left / 60), str = String(Math.min(99, n)).padStart(2, '0'), sh = lastMin ? 'NUMO' : 'NUMW', nh2 = ts * 0.46;
     hx.save(); hx.globalAlpha = 0; const w = drawNum(str, 0, 0, nh2, sh); hx.restore();
     hx.save(); hx.shadowColor = '#0008'; hx.shadowBlur = 3; drawNum(str, tx - w - 8, ty + ts * 0.08, nh2, sh); hx.restore(); }
   // dash meter (placeholder look)
@@ -555,6 +556,8 @@ function reportText() {
     'picked: ' + S.picked + '  layer: ' + S.layer + '  pos: ' + S.pos.map(v => v.toFixed(1)).join(', ') + '  target: ' + (S.targetLabel || 'none'),
     'fps ~' + fps + '  window: ' + innerWidth + 'x' + innerHeight + '  touch: ' + ('ontouchstart' in window), 'ua: ' + navigator.userAgent, '', 'what happened: '].join('\n');
 }
+$('bStop').style.display = MODE === 'exact' || MODE === 'eternal' ? 'block' : 'none'; $('bStop').textContent = MODE === 'exact' ? 'Stop with this size' : 'Stop rolling';   // a visible way to end Exact Size and Eternal, under the size gauge (tester); it asks the same question as the pause menu (A93)
+$('bStop').onclick = () => { setPause(true); $(MODE === 'exact' ? 'pStop' : 'pQuit').onclick(); };
 $('bPause').onclick = () => setPause(true); $('pResume').onclick = () => setPause(false);
 // Restart, quit and the two ways of ending a run ask the question from the original's PAUSE_MENU strings first: 0 exit to the menu, 1 exact size, 2 eternal, 3 restart (A93). Second tap = yes. The yes/no buttons themselves are mine
 const CONFIRMS = [['pMenu', 0, 'Back to stages', () => { location.href = 'menu.html?screen=stage&pack=' + PACK + '&mode=' + MODE; }], ['pRestart', 3, 'Restart', () => { setPause(false); restartUI(); }],
@@ -591,7 +594,8 @@ function collect(name) {
     c.ach[id] = 1; if (!msg) msg = KT.clean(KT.group('ACHIEVEMENT')[0] || ''); }
   if (msg) { colSave(c); toast = { t: 4 * KSim.FPS, text: msg }; }
 }
-function saveAlbum() { if (MODE !== 'story' || !S.won) return; const c = colLoad(), a = c.alb[STAGE] = c.alb[STAGE] || {}; for (const k in runItems) a[k] = Math.max(a[k] || 0, runItems[k]); colSave(c); }
+function saveAlbum() { if (!S.won) return;   // every mode counts: the result builder (FUN_00040e20) calls the album update (FUN_000413b4) whatever the mode (A127). Whether a failed Story run counts is not known, so only finished runs are kept
+  const c = colLoad(), a = c.alb[STAGE] = c.alb[STAGE] || {}; for (const k in runItems) a[k] = Math.max(a[k] || 0, runItems[k]); colSave(c); }
 
 // ---- records (localStorage, per stage and mode): best clear time for story, biggest ball for the other two ----
 function saveRecord() {

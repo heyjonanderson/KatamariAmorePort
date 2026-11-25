@@ -14,7 +14,7 @@ const MODES = [
 // Mode button labels in each language. These are MY wording (the original draws them as pictures), see A77
 const MODE_NAMES = { en: ['Story', 'Time Attack', 'Eternal', 'Exact Size'], fr: ['Histoire', 'Contre la montre', 'Éternel', 'Taille exacte'], de: ['Geschichte', 'Zeitangriff', 'Ewig', 'Exakte Größe'], it: ['Storia', 'Contro il tempo', 'Eterno', 'Misura esatta'], es: ['Historia', 'Contrarreloj', 'Eterno', 'Tamaño exacto'], ja: ['ストーリー', 'タイムアタック', 'エターナル', 'ジャストサイズ'] };
 { const n = MODE_NAMES[(window.KText && KText.lang) || 'en'] || MODE_NAMES.en; MODES.forEach((x, i) => { x.name = n[i]; }); }
-let mode = qs.get('mode') || 'story', plays = null, dlg = null;
+let mode = qs.get('mode') || 'story', stageIdx = 0, plays = null, dlg = null;
 const show = id => { for (const s of document.querySelectorAll('.scr')) s.classList.toggle('on', s.id === id); };
 const KT = window.KText;
 
@@ -28,7 +28,7 @@ function packScreen() {
   for (let p = 1; p <= 3; p++) {
     const b = document.createElement('div'); b.className = 'btn ' + (p === pack ? 'y' : 'g'); b.style.left = '90px'; b.style.top = (34 + (p - 1) * 78) + 'px'; b.textContent = ty[p - 1];
     const sm = document.createElement('div'); sm.className = 'info'; sm.style.top = (34 + (p - 1) * 78 + 44) + 'px'; sm.style.fontSize = '11px'; sm.style.color = '#234'; sm.style.textShadow = '0 1px 2px #fff8'; sm.textContent = (KT.group('STAGEPACK_DETAIL')[p - 1] || '').replace('\n', ' '); box.appendChild(sm);
-    b.onclick = () => { KSnd.se('KD_SE_common_00'); pack = p; modeScreen(); };
+    b.onclick = () => { KSnd.se('KD_SE_common_00'); pack = p; stageScreen(); };   // the original asks pack, then stage, then mode: the mode screen's setup turns (pack, stage slot) into the global stage index first (FUN_00038ea4 state 9, A128)
     box.appendChild(b);
   }
 }
@@ -41,9 +41,10 @@ function modeScreen() {
     if (m.off) { const s = document.createElement('small'); s.textContent = 'soon'; b.appendChild(s); }
     const info = () => { $('mInfo').textContent = m.info >= 0 ? KT.group('SELECT_MODEINFO')[m.info] : KT.group('SELECT_TAIL')[0]; };
     b.onmouseenter = info;
-    b.onclick = () => { info(); if (m.off) return; KSnd.se('KD_SE_common_00'); mode = m.id; stageScreen(); };
+    b.onclick = () => { info(); if (m.off) return; KSnd.se('KD_SE_common_00'); mode = m.id; brief(stageIdx); };
     box.appendChild(b);
   });
+  $('mBack').onclick = stageScreen;
 }
 
 function stageScreen() {
@@ -55,14 +56,14 @@ function stageScreen() {
     const l = document.createElement('div'); l.className = 'tlab'; l.style.left = (x - 3) + 'px'; l.style.top = (y + 88) + 'px'; l.textContent = names[i] || st;
     box.appendChild(t); box.appendChild(l);
     { let r = {}; try { r = (JSON.parse(localStorage.getItem('kam_rec') || '{}'))[st] || {}; } catch (e) {}
-      const txt = mode === 'story' ? (r.story ? 'best ' + KT.fmtTime(r.story) : '') : mode === 'exact' ? (r.exactMm !== undefined ? 'best: off by ' + KT.fmtSize(r.exactMm / 10) : '') : (r[mode] ? 'best ' + (r[mode] >= 100 ? (r[mode] / 100).toFixed(2) + ' m' : r[mode].toFixed(1) + ' cm') : '');
-      if (txt) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 62) + 'px'; f.style.color = '#8dff8d'; f.textContent = (mode === 'story' && r.cleared ? '\u2713 ' : '') + txt; box.appendChild(f); } }
+      const txt = true ? (r.story ? 'best ' + KT.fmtTime(r.story) : '') : mode === 'exact' ? (r.exactMm !== undefined ? 'best: off by ' + KT.fmtSize(r.exactMm / 10) : '') : (r[mode] ? 'best ' + (r[mode] >= 100 ? (r[mode] / 100).toFixed(2) + ' m' : r[mode].toFixed(1) + ' cm') : '');
+      if (txt) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 62) + 'px'; f.style.color = '#8dff8d'; f.textContent = (r.cleared ? '\u2713 ' : '') + txt; box.appendChild(f); } }
     if (i >= PLAYABLE) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'not ported'; box.appendChild(f); }
     else if (pack > 1) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'untested'; box.appendChild(f); }
     else if (i > 0) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'rough'; box.appendChild(f); }
-    t.onclick = () => { if (i >= PLAYABLE) { $('stInfo').textContent = KT.group('COMING_SOON')[0].replace('\n', ' '); return; } KSnd.se('KD_SE_common_00'); brief(i); };
+    t.onclick = () => { if (i >= PLAYABLE) { $('stInfo').textContent = KT.group('COMING_SOON')[0].replace('\n', ' '); return; } KSnd.se('KD_SE_common_00'); stageIdx = i; modeScreen(); };
   });
-  $('stBack').onclick = modeScreen; $('stPack').onclick = packScreen; $('stDemo').onclick = () => demo(stageScreen); $('stRec').onclick = () => recScreen(mode); $('stAlb').onclick = () => albScreen(0);
+  $('stBack').onclick = packScreen; $('stPack').onclick = packScreen; $('stDemo').onclick = () => demo(stageScreen); $('stRec').onclick = () => recScreen('story'); $('stAlb').onclick = () => albScreen(0);
 }
 
 
