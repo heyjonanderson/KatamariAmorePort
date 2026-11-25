@@ -302,7 +302,7 @@
     if (lz <= -t && Math.abs(rz) <= t && pr === 0) return pivot(-TURNDELTA3 * (Math.abs(lz) - t) / rng);   // sCheckTurnBL + sTurnSL
     if (rz <= -t && Math.abs(lz) <= t && pl === 0) return pivot(TURNDELTA3 * (Math.abs(rz) - t) / rng);   // sCheckTurnBR + sTurnSR
     if (pl <= 0 || pr <= 0) return none;                                                                    // one stick down but not a pivot: dropped
-    const ln = [l[0] / pl, l[1] / pl], rn = [r[0] / pr, r[1] / pr];
+    const ll = Math.hypot(l[0], l[1]), rl = Math.hypot(r[0], r[1]), ln = [l[0] / ll, l[1] / ll], rn = [r[0] / rl, r[1] / rl];   // unit vectors (lengths above 1 are clamped to power 1)
     const ang = Math.acos(Math.max(-1, Math.min(1, ln[0] * rn[0] + ln[1] * rn[1])));                         // f32StickAngle[2]
     if (ang >= Math.PI / 2) {                                                                                // sTurn90: the sticks pull apart
       const lim = TURN_ANGLE2 * Math.PI; let ratio = 0, ok = false;
@@ -311,7 +311,7 @@
       return { turn: ok ? TURNDELTA2 * ratio : 0, power: 0, dir: 0, mdir: -1, phi: 0, msr: 0, moveTurn: true, spin: ok };
     }
     const ex = p => p >= t ? (p - t) / rng : 0, power = (ex(pl) + ex(pr)) * 0.5;                              // sGetMovePower
-    let sx = ln[0] + rn[0], sz = ln[1] + rn[1]; const sl = Math.hypot(sx, sz) || 1; sx /= sl; sz /= sl;       // fvNrmStick[2]
+    let sx = ln[0] * pl + rn[0] * pr, sz = ln[1] * pl + rn[1] * pr; const sl = Math.hypot(sx, sz) || 1; sx /= sl; sz /= sl;       // fvNrmStick[2]
     const th = Math.acos(Math.max(-1, Math.min(1, sz))), range1 = Math.PI / 2 - SIDE_ANGLE, range2 = Math.PI / 2 + SIDE_ANGLE, left = sx < 0;
     let phi = th; if (th > range1 && th < range2) phi = Math.PI / 2; if (left) phi = -phi;                    // mInput->rotY(theta): the push is rotated by the stick angle, snapped to 90 degrees in the side zone
     // sTurn
