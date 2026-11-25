@@ -133,11 +133,14 @@
     return out;
   }
   // nearest hit distance along a ray against all collision triangles (Moller-Trumbore, double sided); null if none within maxT
-  function rayHit(S, ox, oy, oz, dx, dy, dz, maxT) {
+  function rayHit(S, ox, oy, oz, dx, dy, dz, maxT, oneSided) {
     const H = S.camHit || S.hit; if (!H) return null; const T = H.tris; let best = null;
     for (let t = 0, n = T.length / 9; t < n; t++) {
       if (S.erased && H.kind && S.erased[H.kind[t]]) continue;
       const o = t * 9, e1x = T[o+3]-T[o], e1y = T[o+4]-T[o+1], e1z = T[o+5]-T[o+2], e2x = T[o+6]-T[o], e2y = T[o+7]-T[o+1], e2z = T[o+8]-T[o+2];
+      // the engine's segment test (FUN_0000f688) only counts a polygon when the segment starts on its front side and ends behind it; the plane comes from the vertex order (Newell, FUN_0000f0ec),
+      // which in this z-mirrored data is the negative side of cross(e1, e2) (A134)
+      if (oneSided && (e1y*e2z-e1z*e2y)*(ox-T[o]) + (e1z*e2x-e1x*e2z)*(oy-T[o+1]) + (e1x*e2y-e1y*e2x)*(oz-T[o+2]) > 0) continue;
       const px = dy*e2z-dz*e2y, py = dz*e2x-dx*e2z, pz = dx*e2y-dy*e2x, det = e1x*px+e1y*py+e1z*pz; if (Math.abs(det) < 1e-9) continue;
       const inv = 1/det, tx = ox-T[o], ty = oy-T[o+1], tz = oz-T[o+2], u = (tx*px+ty*py+tz*pz)*inv; if (u < 0 || u > 1) continue;
       const qx = ty*e1z-tz*e1y, qy = tz*e1x-tx*e1z, qz = tx*e1y-ty*e1x, v = (dx*qx+dy*qy+dz*qz)*inv; if (v < 0 || u + v > 1) continue;

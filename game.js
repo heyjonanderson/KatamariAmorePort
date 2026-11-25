@@ -59,6 +59,7 @@ const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
 // ---- settings (A67): lighting and texture filtering, kept in localStorage. The original's own values are not in the data, so these are choices, not a copy ----
 // Back-face culling (A8, A117): the engine enables GL_CULL_FACE with glFrontFace(GL_CW) (FUN_0000dd90) and the model data agrees: the signed volume of every closed object is negative, i.e. faces are clockwise seen from outside in data axes. The port mirrors x in the projection (P20), so on screen the front faces turn counter-clockwise: default GL front face
+const CAMSIDE = new URLSearchParams(location.search).get('camside') || '1';   // '2' brings back the two-sided camera ray (A134)
 const FARMODE = new URLSearchParams(location.search).get('far') || 'engine';
 const CULLMODE = new URLSearchParams(location.search).get('cull') || 'ccw';
 const setCull = () => { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);  if (CULLMODE === 'off') gl.disable(gl.CULL_FACE); else { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.frontFace(CULLMODE === 'cw' ? gl.CW : gl.CCW); } };
@@ -282,7 +283,7 @@ function draw(alpha) {
   const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
   const rb = [eyeFull[0] - pos[0], eyeFull[1] - pos[1], eyeFull[2] - pos[2]], lb = Math.hypot(rb[0], rb[1], rb[2]) || 1;   // the test ray: ball to the wanted eye
   const d0 = [eyeFull[0] - tgt[0], eyeFull[1] - tgt[1], eyeFull[2] - tgt[2]], len0 = Math.hypot(d0[0], d0[1], d0[2]) || 1, hz = Math.hypot(d0[0], d0[2]) || 1, e0 = Math.atan2(d0[1], hz);   // the swing turns the eye round the look-at point (c60c: eye = look + R * (eye - look))
-  let e = e0; { const t = KSim.rayHit(S, pos[0], pos[1], pos[2], rb[0] / lb, rb[1] / lb, rb[2] / lb, lb);
+  let e = e0; { const t = KSim.rayHit(S, pos[0], pos[1], pos[2], rb[0] / lb, rb[1] / lb, rb[2] / lb, lb, CAMSIDE !== '2');
     if (t !== null) { const f = t / lb, sw = Math.min(10 + 75 * Math.min(1, Math.max(0, 1 - f)), 85 - e0 * 180 / Math.PI); e = e0 + Math.max(0, sw) * Math.PI / 180; } }
   cam.e = e; cam.L = lb;
   const eye = [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
