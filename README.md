@@ -100,7 +100,7 @@ Not in the shipped source files. Some can be pulled out of the compiled binary, 
 
 - **Confirm the one-pad direction and make it the touch default** (A121) [S]. The engine’s one-pad mapping is ported (?ctl=pad). The one open point is which pad direction is forward in the original; the port assumes up. Check against a recording or the tester on a touch device, then switch touch over from the tank mix.
 - **Decode the original album and score layout** (A55, A114) [M]. The Records and Collection screens use the real art but my own text layout. What the album shows per item (pictures, which items count), the score screen rows and the Shop (an in-app purchase page, left out on purpose) are not decoded.
-- **Sound ids with no known trigger** (A101) [S]. Ids 14, 20 and 26 to 29 (game_08, game_14, game_27 to game_30), the lump sound (id 17) and splash (id 28) have no trigger in the port. The new-area sound (game_28) is still my guess.
+- **Lump and splash sounds** (A101) [S]. The lump sound (id 17) and splash (id 28) have no trigger in the port (no engine distortion rate, no water). Ids 14, 26, 27 and 29 are never played by the original, so nothing is missing for them.
 - **Path start point** (A37) [S]. Path followers start at the beginning of their curve. The initial position value is assumed zero.
 - **Hide stuck objects buried in a big ball** (A123) [M]. Per kind stuck counts above 90 ease a size threshold (70 and 0.8 literals) and objects under it are flagged and removed from the draw and hit lists. The flag fields and FUN_00013028 still need reading.
 - **End banners and a few dialog triggers** (A93, A94) [S]. The 1 minute banner hold time (45 and 60 are passed in), the res_01 trigger and the variant selector for the result lines are not decoded. END_COM is now shown after the goodbye.
@@ -116,6 +116,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Sound id triggers closed out: every call of the original sound player was listed. Ids 14, 26, 27 and 29 are never played (unused leftovers), id 20 is the camera pull back (already ported). The port's invented new-area sound and toast are removed because the original has neither.
 - Unused stage fields (A91) traced to their readers in the binary: +0x44 has none, +0x48 / +0x4c (5 and 1000) scale the result screen picture, +0x54 is the fall height already used. The search turned up one real mechanic that is not ported (A123: stuck objects are hidden once deep in a growing ball when a kind has more than 90 stuck).
 - END_COM ("Royal Rainbow!") now follows the goodbye on a win, as the original appends it to the same dialog (FUN_00033620 then FUN_0004014c); the banner object mechanics (1/30 per frame fades, dialog text engine, queued) are written down in A93.
 - Real dash gesture ported from OujiDash.cppi: taps are strokes (14 frames apart at most), the 3rd starts a wheel spin, the 3 + wheelStrokes(size)th launches the dash at the spin speed, strokes stopping end it, a 240 frame stroking budget then 240 frames forbidden. All constants read (gf32DefaultOujiParam, OUJI_DASH_DURATION_TIME = 1 from the binary); steering ported whole from OujiCtrl4.cppi as readCtrl (pivots, spin by stick angle, angle-based turn, side and back zones with their speed ratios, push direction by stick angle); A120 resolved, A113 and A76 updated (A120b to d, A121, A122)
