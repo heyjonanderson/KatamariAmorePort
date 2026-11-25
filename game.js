@@ -59,7 +59,10 @@ const pow2 = n => (n & (n - 1)) === 0;
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img ' + url)); i.src = url; }); }
 // ---- settings (A67): lighting and texture filtering, kept in localStorage. The original's own values are not in the data, so these are choices, not a copy ----
 // Back-face culling (A8, A117): the engine enables GL_CULL_FACE with glFrontFace(GL_CW) (FUN_0000dd90) and the model data agrees: the signed volume of every closed object is negative, i.e. faces are clockwise seen from outside in data axes. The port mirrors x in the projection (P20), so on screen the front faces turn counter-clockwise: default GL front face
-const VIEWWIDE = new URLSearchParams(location.search).get('view') === 'wide';   // keeps the 3:2 vertical view angle (33 degrees) on wider windows (A135, not the original)
+// Optional improvements (default off, the original behaviour stays the default). Saved in the browser; changed from the pause menu.
+const OPT = (() => { let o = {}; try { o = JSON.parse(localStorage.getItem('kam_opt') || '{}') || {}; } catch (e) {} return o; })();
+const saveOpt = () => { try { localStorage.setItem('kam_opt', JSON.stringify(OPT)); } catch (e) {} };
+const VIEWWIDE = new URLSearchParams(location.search).get('view') === 'wide' || !!OPT.wide;   // keeps the 3:2 vertical view angle (33 degrees) on wider windows (A135, not the original)
 const CAMSIDE = new URLSearchParams(location.search).get('camside') || '1';   // '2' brings back the two-sided camera ray (A134)
 const FARMODE = new URLSearchParams(location.search).get('far') || 'engine';
 const CULLMODE = new URLSearchParams(location.search).get('cull') || 'ccw';
@@ -153,7 +156,7 @@ function restart() {
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; KSnd.bgm(MODE === 'timeattack' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
-  { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
+  { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; else if (OPT.minute && (MODE === 'story' || MODE === 'timeattack')) S.timeLimit += 60; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
 }
@@ -505,7 +508,7 @@ function frame(now) {
       if (ev.type === 'pickup') collect(ev.name);
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
-      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = catchSeFile(STAGE, cs[2]); activeCatch = { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
+      if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = catchSeFile(STAGE, cs[2]); activeCatch = OPT.quiet ? null : { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
       else if (ev.type === 'crush') KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_03' : 'KD_SE_game_04');   // reqCrush (FUN_00045cb8): id 9 under 1 m, id 10 from 1 m (A99, A100)
       else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
       else if (ev.type === 'flip') { KSnd.se('KD_SE_game_13'); burst(10); }   // Jump180 start plays sound id 0x13 = game_13 (FUN_00025e30, A101)
@@ -549,7 +552,7 @@ function frame(now) {
 function setPause(on) {
   if (S && (S.won || lost)) on = false;
   paused = on; $('pStop').style.display = MODE === 'exact' ? 'block' : 'none'; $('pQuit').style.display = MODE === 'eternal' ? 'block' : 'none'; resetConfirms(); $('pause').style.display = on ? 'flex' : 'none'; $('pText').style.display = 'none'; $('pNote').textContent = '';
-  if (on) { const cm = qs.get('catch') === 'f0'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'old guess (first monolist float)' : 'from the engine formula (default)') + ' (tap to switch)'; }
+  if (on) { syncOpts(); const cm = qs.get('catch') === 'f0'; $('pCatch').textContent = 'Catch size: ' + (cm ? 'old guess (first monolist float)' : 'from the engine formula (default)') + ' (tap to switch)'; }
 }
 function reportText() {
   const now = performance.now(); const fps = Math.round(1000 / Math.max(1, last_dt * 1000));
@@ -571,6 +574,9 @@ for (const [id, q, label, go] of CONFIRMS) $(id).onclick = () => {
   go();
 };
 const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.light][0]; $('pTex').textContent = 'Textures: ' + FILTERS[SET.filter]; };
+const OPTS = [['pOMin', 'minute', 'Extra minute on timed runs (restart to apply)'], ['pOQuiet', 'quiet', 'Repeating object sounds off'], ['pOWide', 'wide', 'Wide view (keeps the 33 degree vertical angle)']];
+function syncOpts() { for (const [id, k, label] of OPTS) $(id).textContent = label + ': ' + (OPT[k] ? 'on' : 'off (original)'); }
+for (const [id, k] of OPTS) $(id).onclick = () => { OPT[k] = !OPT[k]; saveOpt(); syncOpts(); };
 $('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
 $('pTex').onclick = () => { SET.filter = (SET.filter + 1) % FILTERS.length; saveSet(); applyFilter(); syncSet(); };
 syncSet();
@@ -601,6 +607,7 @@ function saveAlbum() { if (!S.won) return;   // every mode counts: the result bu
 
 // ---- records (localStorage, per stage and mode): best clear time for story, biggest ball for the other two ----
 function saveRecord() {
+  if (OPT.minute) return;   // a run with the extra minute is not comparable with the original's records
   try {
     const rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'), r = rec[STAGE] = rec[STAGE] || {}, el = S.frame / KSim.FPS;
     if (MODE === 'story') { if (S.won && (!r.story || el < r.story)) { r.story = +el.toFixed(1); r.newBest = true; } r.cleared = r.cleared || !!S.won; }
