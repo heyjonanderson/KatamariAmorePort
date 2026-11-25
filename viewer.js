@@ -11,7 +11,7 @@ window.addEventListener('error', e => S.err.push(String(e.message)));
 
 // ---- minimal mat4 (column-major) ----
 const M = {
-  persp(f, a, n, fa) { const t = 1 / Math.tan(f / 2), nf = 1 / (n - fa); return [t / a,0,0,0, 0,t,0,0, 0,0,(fa + n) * nf,-1, 0,0,2 * fa * n * nf,0]; },
+  /* x negated: visual data is left-handed, same flip as the game (P20); fixes the mirrored viewer reported by testers */ persp(f, a, n, fa) { const t = 1 / Math.tan(f / 2), nf = 1 / (n - fa); return [-t / a,0,0,0, 0,t,0,0, 0,0,(fa + n) * nf,-1, 0,0,2 * fa * n * nf,0]; },
   mul(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k*4+r] * b[c*4+k]; o[c*4+r] = s; } return o; },
   look(e, t, u) { let z = [e[0]-t[0], e[1]-t[1], e[2]-t[2]]; let l = Math.hypot(...z); z = z.map(v => v / l);
     let x = [u[1]*z[2]-u[2]*z[1], u[2]*z[0]-u[0]*z[2], u[0]*z[1]-u[1]*z[0]]; l = Math.hypot(...x); x = x.map(v => v / l);
@@ -195,7 +195,7 @@ canvas.addEventListener('pointermove', e => {
   const prev = ptr.get(e.pointerId); ptr.set(e.pointerId, [e.clientX, e.clientY]);
   if (ptr.size === 1) {
     if (e.buttons & 2 || e.shiftKey) pan(e.clientX - prev[0], e.clientY - prev[1]);
-    else { S.yaw -= (e.clientX - prev[0]) * 0.008; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch + (e.clientY - prev[1]) * 0.008)); }
+    else { S.yaw += (e.clientX - prev[0]) * 0.008; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch + (e.clientY - prev[1]) * 0.008)); }
   } else if (ptr.size === 2) {
     const [a, b] = [...ptr.values()]; const d = Math.hypot(a[0]-b[0], a[1]-b[1]), c = [(a[0]+b[0])/2, (a[1]+b[1])/2];
     if (last) { S.dist = Math.max(0.5, S.dist * last.d / d); pan(c[0] - last.c[0], c[1] - last.c[1]); }
@@ -204,7 +204,7 @@ canvas.addEventListener('pointermove', e => {
 });
 function pan(dx, dy) {
   const k = S.dist * 0.0016, cy = Math.cos(S.yaw), sy = Math.sin(S.yaw);
-  S.target[0] -= (cy * dx) * k; S.target[2] -= (-sy * dx) * k; S.target[1] += dy * k;
+  S.target[0] += (cy * dx) * k; S.target[2] += (-sy * dx) * k; S.target[1] += dy * k;
 }
 canvas.addEventListener('wheel', e => { e.preventDefault(); S.dist = Math.max(0.5, S.dist * Math.exp(e.deltaY * 0.001)); }, { passive: false });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
