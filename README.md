@@ -116,6 +116,7 @@ Not part of this port. Parked here so they do not get lost.
 
 ### Done
 
+- Camera wall ray start confirmed to be the ball position (A112). Menu layout looked at: it is code (tweened objects with start and end positions per screen), not data, so an exact port is a per-screen decode of the menu range; the size of that job is now written in A38.
 - Sound id triggers closed out: every call of the original sound player was listed. Ids 14, 26, 27 and 29 are never played (unused leftovers), id 20 is the camera pull back (already ported). The port's invented new-area sound and toast are removed because the original has neither.
 - Unused stage fields (A91) traced to their readers in the binary: +0x44 has none, +0x48 / +0x4c (5 and 1000) scale the result screen picture, +0x54 is the fall height already used. The search turned up one real mechanic that is not ported (A123: stuck objects are hidden once deep in a growing ball when a kind has more than 90 stuck).
 - END_COM ("Royal Rainbow!") now follows the goodbye on a win, as the original appends it to the same dialog (FUN_00033620 then FUN_0004014c); the banner object mechanics (1/30 per frame fades, dialog text engine, queued) are written down in A93.
