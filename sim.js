@@ -6,7 +6,10 @@
   const FPS = 30;                    // PLACEHOLDER (P1): fixed step rate, not read from the game
   // Two-stick control constants, read from KatamariData.cppi (gf32DefaultOujiParam) and OujiCtrl4.cppi
   const TILT = 0.2, TURNDELTA = 0.035, TURNDELTA2 = 0.055, TURNDELTA3 = 0.025, MOVEDELTA = 0.06, MOVEDELTA_B = 0.03;
-  const DASH_DURATION = 240, DASH_FORBID = 240;   // frames, from the same table
+  // Dash gesture constants: gf32DefaultOujiParam in KatamariData.cppi (index 15 to 18) copied into the Ouji members at +0xf0/+0xf8/+0xf4/+0xfc (FUN_0002xxxx param copy, checked in the binary), A120.
+  // dw = OUJI_DASH_DURATION_TIME = 1 (the literal in sDashNormal, FUN_00028150). repeat = frames between taps when a key is held (mine, A120b)
+  const DASH = { stroke: 14, maxDur: 240, start: 3, forbid: 240, dw: 1, repeat: 5 };
+  const wheelStrokes = d => d < 50 ? 3 : d < 100 ? 4 : d < 500 ? 5 : d < 1000 ? 6 : 7;   // sGetWheelSpinStroke (gsKataWheelSpin, A101)
   // KPARAM, read out of the binary (tools/kparam.json, ASSUMPTIONS A71). Only the ones the sim uses are here
   const KP = { registance: 0.0352, moveTurnRegist: 0.1234, getRatio: 0.1, crumbleRatio: 0.03, crumbleDepth: 5, crumbleAngle: 0.28, crumbleSpeedRatio: 0.98, convergeRatio: 0.015, halfSpeed: 0.4, tilt1: 0.29, tilt2: 0.99, brakeSpeedRatio: 0.45 };
   const WALL_NY = Math.cos(0.74 * Math.PI / 2), FLAT_NY = Math.cos(0.0453 * Math.PI / 2);   // KPARAM f32WallAngle and f32FlatAngle, times 90 degrees (A103): a face with normal.y (up) at or under WALL_NY is a wall, at or over FLAT_NY it is flat ground
@@ -153,7 +156,7 @@
       G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
-      vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
+      vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
       lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
@@ -277,6 +280,8 @@
     const r = C[idx === undefined ? cameraRow(S) : idx];
     return { back: -r[3], up: -r[2], ahead: r[7], lookUp: -r[6], far: r[9] };
   }
+  // gYm_OujiDashCancel: Dash, WheelSpin and the stroke count off. The stroke timer and the budget stay (a held key needs a fresh press, my dashLock)
+  function dashCancel(S, keepLock) { const d = S.dS; d.on = false; d.spin = false; d.start = false; d.n = 0; S.dash = false; S.wheelSpin = false; if (!keepLock) S.dashLock = true; }
   // Convenience for keyboards and bots: forward/turn (turn > 0 turns left, toward +yaw) -> two stick values
   function tank(fwd, turn) { const c = v => Math.max(-1, Math.min(1, v)); return { L: c(fwd - turn), R: c(fwd + turn) }; }
 
@@ -344,7 +349,7 @@
     const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2); if (refp <= 0) return;
     const r = [d[0] - 2 * inner * nx, d[1] - 2 * inner * ny, d[2] - 2 * inner * nz];
     S.reflV = [r[0] * 0.95 * V, r[2] * 0.95 * V]; S.reflVy = r[1] * REFL * V;
-    S.dash = false; S.dashT = 0; S.dashLock = true;                                           // gYm_OujiDashCancel
+    dashCancel(S);                                           // gYm_OujiDashCancel
     const spd = Math.max(0, Math.min(1, (S.fallT - FALL_MIN) / (FALL_MAX - FALL_MIN)));       // sGetSpeedRatio, airborne and hit the ground
     if (spd * refp > 0) crumbleHit(S, spd * refp, V, vmax);
     S.events.push({ type: 'bounce', v: S.reflVy, fall: T[1] });
@@ -413,7 +418,7 @@
 
   function step(S, input) {
     S.frame++; S.events.length = 0; moveMonos(S); flyMonos(S); animMonos(S); if (S.crumbleCool > 0) S.crumbleCool--;
-    let inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
+    let inp = input.L !== undefined ? input : Object.assign(tank(input.fwd || 0, input.turn || 0), { dash: input.dash, tap: input.tap, flip: input.flip, P: input.fwd ? Math.abs(input.fwd) : undefined });
     const R = radius(S), stepUp = Math.max(0.5 * R, 1.0), climb = Math.max(CLIMB * R, 1.0), tp = tableParams(S);
     const cw = S.cw, cwWasOn = cw.on, stepW = cw.on ? 0.05 : stepUp, climbW = cw.on ? 0.05 : climb;   // while climbing the ball has to get fully above a ledge: no step-up allowance
      if (cw.forbid > 0) cw.forbid--;                    // sUpdateTime
@@ -434,16 +439,55 @@
     const moveTurn = !!st.moveTurn && S.flipT === 0 && Math.hypot(S.v[0], S.v[1]) > 1e-3;
     if (moveTurn) { const c = Math.cos(st.turn), n = Math.sin(st.turn), ox = S.v[0], oz = S.v[1]; S.v[0] = ox * c + oz * n; S.v[1] = oz * c - ox * n; }
     S.input = { L: inp.L, R: inp.R, turn: st.turn, power: st.power };
-    // dash: up to DASH_DURATION frames, then DASH_FORBID frames of cooldown (PLACEHOLDER: the real dash is a swipe gesture, see P11)
-    if (S.dashCool > 0) S.dashCool--;
-    if (!inp.dash) S.dashLock = false;
-    const wantDash = !!inp.dash && !S.dashLock && st.dir === 1 && S.dashCool === 0;
-    if (wantDash) { S.dashT++; if (S.dashT > DASH_DURATION) { S.dashT = 0; S.dashCool = DASH_FORBID; } } else S.dashT = 0;
-    S.dash = wantDash && S.dashCool === 0; if (S.crushCool > 0) S.crushCool--;
+    // dash: the real stroke gesture (OujiDash.cppi sDashNormal, A120). A tap is a stroke; taps no more than DASH.stroke frames apart keep the count going. At `start` strokes the wheel spin begins (no acceleration, speed builds by accD per frame),
+    // at start + wheelStrokes(diameter) the dash begins and the ball is launched at the wheel spin speed. Dash ends when the strokes stop (OUJI_DASH_DURATION_TIME = 1), on a brake input, or after maxDur frames of stroking, then `forbid` frames of nothing.
+    {
+      const ds = S.dS;
+      let tap = inp.tap;
+      if (tap === undefined) {   // a held dash key or button taps by itself every DASH.repeat frames
+        const h = !!inp.dash;
+        if (!h) { S.dashLock = false; S.dashRep = 0; tap = false; }
+        else if (S.dashLock) tap = false;
+        else { tap = !S.dashHeld || ++S.dashRep >= DASH.repeat; if (tap) S.dashRep = 0; }
+        S.dashHeld = h;
+      } else S.dashLock = false;
+      ds.start = false;
+      if (ds.forbid) {
+        dashCancel(S, true); ds.w = 0;
+        if (--ds.fw <= 0) { ds.forbid = false; ds.fw = 0; ds.dur = DASH.maxDur; }
+      } else if (!ds.spin && S.flyT >= FLY_MIN) dashCancel(S, true);   // KSTAT Fly: guess, A120c
+      else {
+        let ended = false;
+        if (ds.n !== 0 && ds.on && --ds.dur <= 0) { ended = true; ds.forbid = true; ds.fw = DASH.forbid; ds.dur = DASH.maxDur; ds.w = 0; dashCancel(S, true); }
+        if (!ended) {
+          let trig = false;
+          if (tap) { ds.dw = DASH.dw; ds.w = DASH.stroke; ds.n++; trig = true; }
+          if (ds.w !== 0) {
+            ds.w--;
+            const c1 = DASH.start, c2 = c1 + wheelStrokes(S.diam);
+            if (ds.n === c2 && trig) { ds.start = true; S.events.push({ type: 'dash' }); }
+            if (ds.n === c1 && trig) S.events.push({ type: 'spin' });
+            if (ds.n >= c2) { ds.spin = false; ds.on = true; } else if (ds.n >= c1) { ds.spin = true; ds.on = true; }
+          } else {
+            let stat = true;
+            if (ds.on) { ds.dw--; if (ds.dw > 0) stat = false; }
+            if (ds.spin) { ds.dw = 0; stat = true; }
+            ds.n = 0;
+            if (stat) { ds.spin = false; ds.on = false; }
+          }
+        }
+      }
+      S.dash = ds.on; S.wheelSpin = ds.spin;
+      S.dashT = ds.forbid ? 0 : DASH.maxDur - ds.dur; S.dashCool = ds.forbid ? ds.fw : 0;   // for the HUD meter: budget spent, or forbid time left
+      if (S.crushCool > 0) S.crushCool--;
+      // sWheelSpin: speed builds while spinning (and on the start frame), capped at the dash top speed
+      if (ds.spin || ds.start) S.wheelSpd = Math.min(S.wheelSpd + tp.accD, tp.speed * tp.rD); else S.wheelSpd = 0;
+      if (ds.start) { const sp = S.wheelSpd; S.v[0] = Math.sin(S.yaw) * sp; S.v[1] = Math.cos(S.yaw) * sp; }   // sSetDashParam: velocity = wheel spin speed, along prince to ball
+    }
     // acceleration along the facing direction, capped at the table speed (sControl)
     const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
-    let acc = 0, ratio = 0, dir = S.flipT > 0 ? 0 : st.dir, power = st.power;
-    if (S.dash) { power = 1; acc = tp.accD; ratio = tp.rD; }
+    let acc = 0, ratio = 0, dir = S.flipT > 0 ? 0 : S.dash ? 1 : st.dir, power = st.power;   // a dash pushes along the prince's facing whatever the sticks do (sControl: Dash gives fpow 1)
+    if (S.dash) { power = 1; acc = S.wheelSpin ? 0 : tp.accD; ratio = tp.rD; }
     else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * tiltFactor(power); }
     else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
     const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
@@ -509,7 +553,7 @@
           const mnx = mvx / ml, mnz = mvz / ml, kx = S.pos[0] - o.pos[0], kz = S.pos[2] - o.pos[2], kl = Math.hypot(kx, kz) || 1;
           if (kx / kl * mnx + kz / kl * mnz > 0) {
             const sp = Math.min(ml * MP.crashSpd, tp.speed * tp.rD * MP.crashCap);
-            vx = mnx * sp; vz = mnz * sp; S.dash = false; S.dashT = 0; S.ctrlOff = 10; S.events.push({ type: 'crush' });
+            vx = mnx * sp; vz = mnz * sp; dashCancel(S, true); S.ctrlOff = 10; S.events.push({ type: 'crush' });
           }
         }
       }
@@ -566,7 +610,7 @@
           const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2);
           if (refp > 0) {
             S.reflV = [(ux - 2 * inner * nx) * REFL * vIn, (uz - 2 * inner * nz) * REFL * vIn];
-            S.dash = false; S.dashT = 0; S.dashLock = true;                                  // gYm_OujiDashCancel: the dash needs a new press
+            dashCancel(S);                                  // gYm_OujiDashCancel: the dash needs new strokes
             if (Math.min(1, vIn / vmax) > 0.3 && refp > 0.3 && !(S.crushCool > 0)) { S.events.push({ type: 'crush', wall: true }); S.crushCool = 8; }   // my 8 frame gap so a ball ground against a wall does not stutter the sound   // reqCrush when speed ratio and angle power both pass 0.3
           }
         }
@@ -586,9 +630,10 @@
       const axis = norm([mz, 0, -mx]);
       S.R = mmul(axisAngle(axis, -moved / R), S.R);
     }
+    if (S.wheelSpin || (S.dS.start && S.wheelSpd > 0)) { const ax2 = norm([Math.cos(S.yaw), 0, -Math.sin(S.yaw)]); S.R = mmul(axisAngle(ax2, -S.wheelSpd / R), S.R); }   // mWheelSpinRot: the ball spins in place about the camera X axis (w = spin speed / radius)
     // fell through the map (KatamariRecover.cppi): when the ball is 'bottom' cm below the floor line it goes back to the recover point (the start), keeping what it has picked up (A56)
     const rc = S.recover; if (rc && S.pos[1] < -rc[0]) {
-      S.pos = [rc[1], Math.max(-rc[2], 5) + S.diam, rc[3]]; S.vy = 0; S.v = [0, 0]; S.speed = 0; S.yaw = rc[4]; S.dash = false; S.dashT = 0; S.events.push({ type: 'recover' });
+      S.pos = [rc[1], Math.max(-rc[2], 5) + S.diam, rc[3]]; S.vy = 0; S.v = [0, 0]; S.speed = 0; S.yaw = rc[4]; dashCancel(S, true); S.events.push({ type: 'recover' });
     }
     // pickup
     const cdm = S.diam * 10;

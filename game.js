@@ -413,7 +413,7 @@ $('rRetry').onclick = () => { failSnd = false; restartUI(); }; $('rMenu').onclic
 if (window.KText) KText.fit($('rbox'));
 
 // ---- dust kicked up by the ball (GiFx03, small soft puffs) and a "!" over the prince when things fall off (GiHAND is an exclamation mark, not a hand). Original sprites, my timing (A66) ----
-const puffs = []; let bang = 0, airT = 0, prevDash = false, dashSndAt = 0;
+const puffs = []; let bang = 0, airT = 0;
 function addPuff(x, y, z, vx, vy, vz, size, life) { if (puffs.length < 90) puffs.push({ p: [x, y, z], v: [vx, vy, vz], s: size, t0: performance.now(), life }); }
 function burst(n) { const R = KSim.radius(S); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283; addPuff(S.pos[0] + Math.cos(a) * R * 0.8, S.pos[1] - R * 0.9, S.pos[2] + Math.sin(a) * R * 0.8, Math.cos(a) * R * 1.2, R * 0.5 + Math.random() * R * 0.4, Math.sin(a) * R * 1.2, R * (0.35 + Math.random() * 0.25), 500 + Math.random() * 300); } }
 function spawnDust(over) {
@@ -485,10 +485,7 @@ function frame(now) {
     const over = S.won || lost;
     KSim.step(S, over ? { L: 0, R: 0 } : inp); camStep();
     let gotPick = false;
-    { const wheel = d => d < 50 ? 3 : d < 100 ? 4 : d < 500 ? 5 : d < 1000 ? 6 : 7;   // sGetWheelSpinStroke table (A101)
-      if (S.dash && !prevDash) { KSnd.se('KD_SE_game_09'); dashSndAt = S.frame + wheel(S.diam); }   // SND_SE_SPIN (id 0x0f = game_09) when the stroke starts
-      if (dashSndAt && S.frame >= dashSndAt) { dashSndAt = 0; if (S.dash) KSnd.se('KD_SE_game_10'); }   // SND_SE_DASH (id 0x10 = game_10) WheelSpin strokes later
-      prevDash = S.dash; }
+    for (const ev of S.events) { if (ev.type === 'spin') KSnd.se('KD_SE_game_09'); else if (ev.type === 'dash') KSnd.se('KD_SE_game_10'); }   // SND_SE_SPIN (id 15) on the stroke that starts the wheel spin, SND_SE_DASH (id 16) on the one that starts the dash (OujiDash.cppi, A101, A120)
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') gotPick = true;
       if (ev.type === 'pickup') collect(ev.name);
