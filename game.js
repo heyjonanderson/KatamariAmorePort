@@ -161,6 +161,12 @@ function restart() {
 function readInput() {
   const dash = !!(keys.ShiftLeft || keys.ShiftRight || keys.Space || touchDash), flip = !!(keys.KeyQ || keys.KeyE || touchFlip);
   const p = pads.S;
+  if (qs.get('ctl') === 'stick') {   // ?ctl=stick: one stick vector drives both sticks, the engine's angle rule steers (sim readCtrl, A121). Default stays the tank mix below
+    let x = 0, y = 0;
+    if (p) { x = (p.x - p.ox) / PAD_R; y = -(p.y - p.oy) / PAD_R; } else { x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0); y = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0); }
+    const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+    const t = KSim.tank(y, -x * 0.5); return { L: t.L, R: t.R, sx: x, sz: y, dash, flip };   // L and R only feed the HUD and the prince animation
+  }
   if (p) {   // one stick: up = forward, sideways = steer, mixed into the two track values the sim wants (same mix as the keyboard)
     let x = (p.x - p.ox) / PAD_R, y = -(p.y - p.oy) / PAD_R; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
     const t = KSim.tank(y, -x * (Math.abs(y) > 0.2 ? 0.5 : 1)); return { L: t.L, R: t.R, dash, flip, P: Math.abs(y) > 0.2 ? Math.min(1, Math.abs(y) / 0.85) : undefined };   // P: push strength for the speed curve, kept apart from steering (A75)

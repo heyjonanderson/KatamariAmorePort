@@ -285,21 +285,53 @@
   // Convenience for keyboards and bots: forward/turn (turn > 0 turns left, toward +yaw) -> two stick values
   function tank(fwd, turn) { const c = v => Math.max(-1, Math.min(1, v)); return { L: c(fwd - turn), R: c(fwd + turn) }; }
 
-  // Two-stick input like the game's Ouji controller. L and R are -1..1 (up = forward). Returns {turn (rad, + = right), power, dir (1 fwd, -1 back, 0 none)}.
-  function readSticks(L, R) {
-    const pl = Math.abs(L), pr = Math.abs(R), t = TILT, rng = 1 - t;
-    const fL = L >= t, fR = R >= t, bL = L <= -t, bR = R <= -t, idleL = pl < t, idleR = pr < t;
-    const ex = p => Math.max(0, (p - t) / rng);
-    if (fL && idleR) return { turn: TURNDELTA * ex(pl), power: 0, dir: 0 };            // sCheckTurnFL: pivot right
-    if (fR && idleL) return { turn: -TURNDELTA * ex(pr), power: 0, dir: 0 };           // sCheckTurnFR: pivot left
-    if (bL && idleR) return { turn: -TURNDELTA3 * ex(pl), power: 0, dir: 0 };          // sTurnSL
-    if (bR && idleL) return { turn: TURNDELTA3 * ex(pr), power: 0, dir: 0 };           // sTurnSR
-    if (fL && fR) return { turn: MOVEDELTA * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: 1 };
-    if (bL && bR) return { turn: -MOVEDELTA_B * 0.5 * (pl - pr), power: (ex(pl) + ex(pr)) / 2, dir: -1 };   // both back = reverse; the source has a real backward branch with MoveDeltaB (OujiCtrl4.cppi sTurn, A113), constants are gf32DefaultOujiParam
-    if (fL && bR) return { turn: TURNDELTA2 * Math.min(1, ex((pl + pr) / 2) + 0.0), power: 0, dir: 0, moveTurn: true };    // sTurn90: spin right
-    if (fR && bL) return { turn: -TURNDELTA2 * Math.min(1, ex((pl + pr) / 2)), power: 0, dir: 0, moveTurn: true };
-    return { turn: 0, power: 0, dir: 0 };
+  // Two-stick input like the game's Ouji controller (OujiCtrl4.cppi gYm_OujiCtrl4_GetMoveParam, A113). Each stick is a 2D vector l = [x, z] (x right, z forward, length 0..1, 0 = finger up).
+  // Returns {turn (rad, + = right), power, dir (1 push forward or sideways, -1 back, 0 none), mdir (engine u8MoveDir 0 front, 1 back, 2 side, -1 none), phi (angle of the push relative to the prince, rad, + = right), msr (f32MaxSpeedRatio), moveTurn, spin}.
+  // The combined stick and the angle between the two sticks are my reading of fvNrmStick[2] and f32StickAngle[2] (A121); how the game builds the stick vectors is not in the shipped sources.
+  const SIDE_ANGLE = 0.3634740, TURNFAST_F = 0.8733223, TURNFAST_B = 2.2702518, FRONT_SPEED_ANGLE = 0.5, TURN_ANGLE2 = 0.75;   // gf32DefaultOujiParam
+  function readCtrl(l, r) {
+    const t = TILT, rng = 1 - t, none = { turn: 0, power: 0, dir: 0, mdir: -1, phi: 0, msr: 0, moveTurn: false };
+    // a stick shorter than TurnTilt counts as finger up (A122: the engine's own dead zone is in the touch code, which is not shipped; this keeps the old behaviour for keyboard and bot input)
+    let pl = Math.min(1, Math.hypot(l[0], l[1])), pr = Math.min(1, Math.hypot(r[0], r[1]));
+    if (pl < t) { l = [0, 0]; pl = 0; } if (pr < t) { r = [0, 0]; pr = 0; }
+    const lz = l[1], rz = r[1];
+    if (pl === 0 && pr === 0) return none;
+    const pivot = v => ({ turn: v, power: 0, dir: 0, mdir: -1, phi: 0, msr: 0, moveTurn: false });
+    if (lz >= t && Math.abs(rz) <= t && pr === 0) return pivot(TURNDELTA * (lz - t) / rng);               // sCheckTurnFL + sTurnSingle: pivot right
+    if (rz >= t && Math.abs(lz) <= t && pl === 0) return pivot(-TURNDELTA * (rz - t) / rng);              // sCheckTurnFR
+    if (lz <= -t && Math.abs(rz) <= t && pr === 0) return pivot(-TURNDELTA3 * (Math.abs(lz) - t) / rng);   // sCheckTurnBL + sTurnSL
+    if (rz <= -t && Math.abs(lz) <= t && pl === 0) return pivot(TURNDELTA3 * (Math.abs(rz) - t) / rng);   // sCheckTurnBR + sTurnSR
+    if (pl <= 0 || pr <= 0) return none;                                                                    // one stick down but not a pivot: dropped
+    const ln = [l[0] / pl, l[1] / pl], rn = [r[0] / pr, r[1] / pr];
+    const ang = Math.acos(Math.max(-1, Math.min(1, ln[0] * rn[0] + ln[1] * rn[1])));                         // f32StickAngle[2]
+    if (ang >= Math.PI / 2) {                                                                                // sTurn90: the sticks pull apart
+      const lim = TURN_ANGLE2 * Math.PI; let ratio = 0, ok = false;
+      if (ln[1] > 0) { if (rn[1] < 0) { ratio = ang >= lim ? 1 : (ang - Math.PI / 2) / (lim - Math.PI / 2); ok = true; } }
+      else if (rn[1] > 0) { ratio = ang >= lim ? -1 : -(ang - Math.PI / 2) / (lim - Math.PI / 2); ok = true; }
+      return { turn: ok ? TURNDELTA2 * ratio : 0, power: 0, dir: 0, mdir: -1, phi: 0, msr: 0, moveTurn: true, spin: ok };
+    }
+    const ex = p => p >= t ? (p - t) / rng : 0, power = (ex(pl) + ex(pr)) * 0.5;                              // sGetMovePower
+    let sx = ln[0] + rn[0], sz = ln[1] + rn[1]; const sl = Math.hypot(sx, sz) || 1; sx /= sl; sz /= sl;       // fvNrmStick[2]
+    const th = Math.acos(Math.max(-1, Math.min(1, sz))), range1 = Math.PI / 2 - SIDE_ANGLE, range2 = Math.PI / 2 + SIDE_ANGLE, left = sx < 0;
+    let phi = th; if (th > range1 && th < range2) phi = Math.PI / 2; if (left) phi = -phi;                    // mInput->rotY(theta): the push is rotated by the stick angle, snapped to 90 degrees in the side zone
+    // sTurn
+    let ratio, back = false;
+    if (th <= TURNFAST_F) ratio = th / TURNFAST_F;
+    else if (th <= range1) ratio = (range1 - th) / (range1 - TURNFAST_F);
+    else if (th <= range2) ratio = 0;
+    else if (th <= TURNFAST_B) { back = true; ratio = -(th - range2) / (TURNFAST_B - range2); }
+    else { back = true; ratio = -(Math.PI - th) / (Math.PI - TURNFAST_B); }
+    if (left) ratio = -ratio;
+    let ratio2 = pl - pr; if (th > Math.PI / 2) ratio2 = -ratio2;
+    const md = back ? MOVEDELTA_B : MOVEDELTA, turn = md * ratio * 0.5 + md * ratio2 * 0.5;
+    let msr, mdir;
+    if (th <= range1) { let q = (range1 - th) / range1; q = q >= FRONT_SPEED_ANGLE ? 1 : q / FRONT_SPEED_ANGLE; msr = q; mdir = 0; }
+    else if (th >= range2) { msr = (th - range2) / range1; mdir = 1; }
+    else { msr = 0; mdir = 2; }
+    return { turn, power, dir: mdir === 1 ? -1 : 1, mdir, phi, msr, moveTurn: false };
   }
+  // 1D sticks (up = forward), the form the keyboard mix and the bots use: a vertical vector per stick
+  function readSticks(L, R) { return readCtrl([0, L], [0, R]); }
 
   // ---- lumps (A60, A64) ----
   // MonoIbitsu.cppi: the farthest IBITSU tip of each of the last N attached objects becomes a "fluid" distort point (up to 6). Katamari.sSetPosition-style code then puts the
@@ -427,9 +459,10 @@
     S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
     if (S.ctrlOff > 0) { S.ctrlOff--; inp = { L: 0, R: 0, dash: false, flip: false }; }   // OujiControlDisableTime: no prince input for a few frames after a crush (A100)
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
-    const st = readSticks(inp.L, inp.R);
+    // single stick (inp.sx, inp.sz, x right, z forward): both sticks carry the same vector (A121). Otherwise two vertical sticks L and R
+    const st = inp.sx !== undefined ? readCtrl([inp.sx, inp.sz], [inp.sx, inp.sz]) : readSticks(inp.L, inp.R);
     // The two-stick average power drops when you steer (one stick lower), which with the 0.4 plateau of the speed curve made steering crawl. The original's one-stick path (Ctrl4 combined stick) has no such drop, so single-stick and keyboard input pass their own push strength (A75)
-    if (inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
+    if (inp.sx === undefined && inp.P !== undefined && st.dir !== 0) st.power = Math.max(0, Math.min(1, inp.P));
     // quick turn (OSTAT Jump180): the original has a U-turn button at the bottom centre of the screen. Pressing it makes the prince hop over the ball and face the other way.
     // Timing is guessed (A66)
     if (inp.flip && !S.flipHeld && S.flipT === 0) { S.flipN = flipFrames(S); S.flipT = S.flipN; S.flipYaw0 = S.yaw; S.events.push({ type: 'flip' }); }
@@ -488,13 +521,15 @@
     const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
     let acc = 0, ratio = 0, dir = S.flipT > 0 ? 0 : S.dash ? 1 : st.dir, power = st.power;   // a dash pushes along the prince's facing whatever the sticks do (sControl: Dash gives fpow 1)
     if (S.dash) { power = 1; acc = S.wheelSpin ? 0 : tp.accD; ratio = tp.rD; }
-    else if (dir === 1) { acc = tp.accF * power; ratio = tp.rF * tiltFactor(power); }
-    else if (dir === -1) { acc = tp.accB * power; ratio = tp.rB * tiltFactor(power); }
+    else if (dir !== 0 && st.mdir >= 0) {   // sControl: acceleration by move direction (front, back, side), max speed ratio blends toward the side ratio by f32MaxSpeedRatio
+      acc = [tp.accF, tp.accB, tp.accS][st.mdir] * power;
+      ratio = (st.mdir === 0 ? tp.rS + (tp.rF - tp.rS) * st.msr : tp.rS + (tp.rB - tp.rS) * st.msr) * tiltFactor(power);
+    }
     const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
     if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; if (S.reflVy !== undefined) { S.vy = S.reflVy; S.reflVy = undefined; } }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
     else if (dir !== 0) {
-      let ix = fx * dir, iz = fz * dir;
+      const pa = S.yaw + (st.mdir >= 0 ? st.phi : 0); let ix = Math.sin(pa), iz = Math.cos(pa);   // the push is the prince's facing turned by the stick angle (mInput->rotY)
       // sCheckBreakInput: the input has to point within BrakeAngle (30 degrees) of straight against the motion. A brake starts only above BrakeSpeedRatio (45%)
       // of the max speed for the direction the ball is travelling relative to the prince (front, back or side), and then holds until the input stops opposing
       let braking = false;
@@ -577,7 +612,7 @@
         if (can) {
           const hx = -w.n[0], hz = -w.n[1], camCos = fx * hx + fz * hz;                 // camera forward against the direction to the wall (camera = prince facing, A98)
           if (camCos >= CW.camCos && dir !== 0) {
-            const n = cw.on ? cw.norm : w.n, ix = fx * dir, iz = fz * dir, mv = ix * n[0] + iz * n[1];   // input must point into the wall: inner(wall normal, -input) >= cos 36
+            const n = cw.on ? cw.norm : w.n, pa2 = S.yaw + (st.mdir >= 0 ? st.phi : 0), ix = Math.sin(pa2), iz = Math.cos(pa2), mv = ix * n[0] + iz * n[1];   // input must point into the wall: inner(wall normal, -input) >= cos 36
             if (-mv >= CW.angleCos) ok1 = true;
           }
         }
@@ -660,6 +695,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
