@@ -236,7 +236,8 @@
   const IB_FLUID0 = 19, IB_FLUID_N = 6, IB_DEPTH = 12, IB_MAXSCALE = 2.5;
   function distortPoints(S, R, pos, speed, climbing) {
     const pts = [], gn = S.grounded && S.gNorm ? S.gNorm : [0, 1, 0];
-    pts.push({ i: 0, p: [pos[0] - gn[0] * R, pos[1] - gn[1] * R, pos[2] - gn[2] * R], f32Len: R });
+    const cwn = climbing && S.cw && S.cw.norm ? S.cw.norm : null;                       // while climbing point 0 aims into the wall by the climb length (sRoll: fvClimbWallNorm x -f32ClimbWallLen)
+    pts.push({ i: 0, p: cwn ? [pos[0] - cwn[0] * (S.cw.len || R), pos[1], pos[2] - cwn[1] * (S.cw.len || R)] : [pos[0] - gn[0] * R, pos[1] - gn[1] * R, pos[2] - gn[2] * R], f32Len: R });
     if (IBI18) IBI18.forEach((q, i) => { const o = mvec(S.R, [q[0], -q[1], -q[2]]), l = Math.hypot(o[0], o[1], o[2]) || 1, n = [o[0] / l, o[1] / l, o[2] / l]; pts.push({ i: i + 1, n, p: [pos[0] + n[0] * R, pos[1] + n[1] * R, pos[2] + n[2] * R], f32Len: R }); });
     if (!climbing && !S.wheelSpin && S.ibiList && S.ibiList.length) {
       const tp = tableParams(S), vN = tp.speed * tp.rF, vD = tp.speed * tp.rD, sr = speed >= vD ? 0 : speed <= vN ? 1 : 1 - (speed - vN) / Math.max(vD - vN, 1e-6);
@@ -882,7 +883,7 @@
             if (-mv >= CW.angleCos) ok1 = true;
           }
         }
-        if (ok1 && !cw.on) { cw.speed = 0; cw.top = false; cw.norm = w.n.slice(); cw.startY = S.pos[1]; }
+        if (ok1 && !cw.on) { cw.speed = 0; cw.top = false; cw.norm = w.n.slice(); cw.len = S.ray && S.lastRay ? Math.max(R, ...S.lastRay.c.wall.map(h => Math.hypot(h.vec[0], h.vec[1], h.vec[2]))) : R; cw.startY = S.pos[1]; }
       }
       if (!ok1 && cw.on && !cw.top && walls.length === 0 && dir !== 0 && S.pos[1] - R < cw.wallTop) ok1 = true;   // a sphere rising past a wall loses contact before its bottom clears the top (the engine tests several directions around the ball, so the contact lasts); keep climbing until the bottom is over the top (P19)
       if (ok1 && !cw.on && walls.length === 1) cw.wallTop = walls[0].o ? walls[0].o.top : meshTop;

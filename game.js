@@ -224,15 +224,6 @@ function drawModel(g, m, mat) {
 function objMat(R3, t) { return M.fromR3(R3, t, 1); }
 // ---- lumps (A64): the sim lifts the ball over them. The mesh itself stays round: the original draws the core with a rotation matrix only (mDistort is a copy of mLocalWorld, KatamariHit.cppi), so the stretching I had here (A60) was a guess and is gone (A85, A111) ----
 let pulse = 0;
-function shapeBall(R) {
-  const D = ball.data, M_ = ball.mult, B = ball.base, U = ball.dir, lm = S.lumps; let changed = false;
-  for (let i = 0, n = M_.length; i < n; i++) {
-    const o = i * 8, j = i * 3, t = lm.length ? KSim.lumpMult(lm, [U[j], U[j + 1], U[j + 2]]) : 1;
-    const c = M_[i] + (t - M_[i]) * 0.25; if (Math.abs(c - M_[i]) > 1e-4) { M_[i] = c; changed = true; } else M_[i] = t;
-    D[o] = B[j] * M_[i]; D[o + 1] = B[j + 1] * M_[i]; D[o + 2] = B[j + 2] * M_[i];
-  }
-  if (changed || ball.dirty) { gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bufferSubData(gl.ARRAY_BUFFER, 0, D); ball.dirty = changed; }
-}
 const iconCv = document.createElement('canvas'); iconCv.width = iconCv.height = 128; const iconCx = iconCv.getContext('2d');
 function drawIcon(now) {   // renders lastPick's model into the bottom left 128 px of the canvas, copies it into iconCv, and the scene is cleared and drawn over it
   if (!lastPick || !og || canvas.width < 128 || canvas.height < 128) return; const i = lastPick.info, m = og.mods[i.model]; if (!m) return;
