@@ -391,6 +391,12 @@
     }
     return g;
   }
+  // highest floor-like collision face at or below yMax at (x, z): the ground the ray mode actually stands on (the rendered map, S.G, can differ from it)
+  function hitFloorAt(S, x, z, yMax) {
+    let y = yMax;
+    for (let k = 0; k < 12; k++) { const h = segHit(S, [x, y, z], [x, y - 1e5, z]); if (!h) return null; const hy = y - 1e5 * h.r; if (h.n[1] >= WALL_NY) return hy; y = hy - 0.01; }
+    return null;
+  }
   const radius = S => S.diam / 2;
   const maxSpeed = S => interpRows(S.speedRows, S.diam, 1);
   const gravity = S => interpRows(S.gravRows, S.diam, 1);
@@ -960,6 +966,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitFloorAt, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
