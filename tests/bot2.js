@@ -28,6 +28,7 @@ function replan() {
     { const up = K.groundAt(S.G, x, z, g + 2 * R * 0.95); if (up !== null && up > g + stepUp + CELL * 1.05) { why = 'ceiling'; return null; } }
     const sl = Math.max(Math.abs(K.supportAt(S, x + 1, z, g + 3, g + 3) - g) || 0, Math.abs(K.supportAt(S, x, z + 1, g + 3, g + 3) - g) || 0), off = R * Math.sqrt(1 + sl * sl);   // ball centre sits R off a sloped surface, not R above it
     const P = { hit: S.hit, erased: S.erased, pos: [x, g + off, z] }; if (K.hitWalls(P, R, true).length || Math.hypot(P.pos[0] - x, P.pos[2] - z) > 1e-6) { why = 'wall'; return null; }
+    { const Q = { hit: S.hit, erased: S.erased, pos: [x, g + off, z] }; K.hitWalls(Q, R * 0.97, 'ceil'); if (Q.ceilHit && !process.env.NOCEIL) { why = 'ceiling2'; return null; } }   // a face looking down within reach (the engine counts those as walls, A143)
     for (const o of big) { if (o.top <= g + climb) continue; if (Math.abs(o.pos[0] - x) > R + o.maxlen || Math.abs(o.pos[2] - z) > R + o.maxlen) continue; if (K.boxClosest(o, [x, g + R, z]).dist < R * 0.98) { why = 'obj:' + o.n; return null; } }
     return g;
   };
@@ -69,6 +70,7 @@ let noTarget = 0, lastPos = S.pos.slice(), stuckT = 0;
 const INPLOG = process.env.INPLOG, STOPDIAM = +(process.env.STOPDIAM || 0), INP = [];   // INPLOG=file STOPDIAM=cm: write the bot's inputs up to that size, so a browser can replay them (same sim, same state)
 for (let f = 0; f < maxF && !S.won && S.frame < maxF && !(STOPDIAM && S.diam >= STOPDIAM); f++) {
   if (S.frame - planFrame > (plan && plan.target && plan.target.n === S.target ? 12 : 90) || !plan || !plan.route || plan.target.state !== 'map') replan();
+  if (plan && plan.target) { if (plan.target !== globalThis.__curT) { globalThis.__curT = plan.target; globalThis.__curSince = S.frame; } else if (S.frame - globalThis.__curSince > 1200 && !(plan.target.path && plan.target.path.speed > 0)) { skip.set(plan.target, S.frame + 6000); log.push('gave up on ' + plan.target.n + ' at frame ' + S.frame + ' (no pickup in 1200 frames)'); globalThis.__curT = null; plan = null; replan(); } }   // the same target for 1200 frames without picking it up: it cannot be reached the way the planner thinks (a pickup through a slab, say), leave it for a while
   let inp = { fwd: 0, turn: 0 };
   if (plan.route) {
     const r = plan.route; while (plan.idx < r.length - 1 && Math.hypot(r[plan.idx][0] * CELL - S.pos[0], r[plan.idx][1] * CELL - S.pos[2]) < Math.max(CELL * 1.5, K.radius(S) * 0.6)) plan.idx++;
