@@ -539,6 +539,7 @@ function frame(now) {
       else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
       else if (ev.type === 'flip') { KSnd.se('KD_SE_game_13'); burst(10); }   // Jump180 start plays sound id 0x13 = game_13 (FUN_00025e30, A101)
       else if (ev.type === 'brake') KSnd.se('KD_SE_game_12');
+      else if (ev.type === 'ibitsu' && (ev.len - 1) / 1.5 >= 0.3) KSnd.se('KD_SE_game_11');   // gYm_SeGameReq_Ibitsu (FUN_00021d94): SND_SE_IBITSU = id 0x11 = game_11 when (lump length - R) / (2.5 R - R) >= _IBITSU_RATE 0.30 as a lump rock starts (A148)
       else if (ev.type === 'splash') KSnd.se('KD_SE_game_29');   // SND_SE_SPLASH = id 28 = game_29: first frame in water while flying (KatamariHit.cppi sReaction, A101, A139)   // SND_SE_BRAKE = id 0x12 = game_12 (FUN_0001ee7c, A101)
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
