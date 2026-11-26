@@ -319,7 +319,7 @@
     // solid objects (too big to pick up: Mono::gYm_MonoHitCheck "treated as background", then sCheckHitMap): the same kinds of ray against the box. Walk case: the five edge rays reach 0.5 R ahead
     // (the map's reach 0.15 R) and the loop ends at the first hit that is not dropped; fast case: the five swept rays from the old position to the new one plus R, same end; if a fast ray hit, the distort rays are skipped for that object
     const monos = new Set();
-    if (S.ray && opt.objs !== false) {
+    if (S.ray && S.rayObjs && opt.objs !== false) {
       const dm = S.diam * 10;
       for (const o of S.objs) {
         if (o.state !== 'map' || o.catchMm <= dm) continue;
@@ -369,7 +369,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      noCeil: !!opts.noCeil, ceilHit: false, ib: { st: 0, no: -1, len: 0, posi: [0, 0, 0], vec: [0, 0, 0], fluidVec: [0, 0, 0], rot: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, ray: opts.ray !== undefined ? !!opts.ray : !(typeof process !== 'undefined' && process.env && process.env.KRAY === '0'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      noCeil: !!opts.noCeil, ceilHit: false, ib: { st: 0, no: -1, len: 0, posi: [0, 0, 0], vec: [0, 0, 0], fluidVec: [0, 0, 0], rot: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, ray: opts.ray !== undefined ? !!opts.ray : !(typeof process !== 'undefined' && process.env && process.env.KRAY === '0'), rayObjs: opts.rayObjs !== undefined ? !!opts.rayObjs : !(typeof process !== 'undefined' && process.env && process.env.KOBJ === '0'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -866,7 +866,7 @@
       }
     };   // sMovingMono (A100); in ray mode it runs for the objects whose box a ray hit
     for (const o of S.objs) {
-      if (S.ray) break;
+      if (S.ray && S.rayObjs) break;
       if (o.state !== 'map' || o.catchMm <= diamMm) continue;
       if (o.top <= bottom + climbW) continue;
       if (Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) > R + o.maxlen) continue;
@@ -901,7 +901,7 @@
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
       const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
       let boxG = false;
-      const supO = null;                                                              // objects too big to pick up are part of the ray hits now (A150): their tops come back as ground hits
+      const supO = S.rayObjs ? null : supportAt(S, S.pos[0], S.pos[2], 0, S.pos[1] - R + climbW + Math.max(0, -S.vy), true);                                                              // objects too big to pick up are part of the ray hits now (A150): their tops come back as ground hits
       if (supO !== null && S.pos[1] - R <= supO) { if (S.vy < 0 && !S.grounded && !hitG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, supO, [0, 1, 0]); S.pos[1] = supO + R; S.vy = 0; boxG = true; }
       if (hitG && S.vy < 0) { if (!S.grounded && !boxG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, 0, S.gNorm); S.vy = 0; }
       S.grounded = !cw.on && (hitG || boxG); S.rampLift = hitG && !c.ground.some(h => h.n[1] > 0.9999);
