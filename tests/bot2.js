@@ -5,9 +5,10 @@ const stage = process.argv[2] || 'S001', maxF = +(process.argv[3] || 60000), CEL
 const play = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', stage, 'play.json'), 'utf8'));
 const S = K.create(play, Object.assign(process.env.SPHERE ? { ray: false } : {}, process.env.STOPCLIMB ? { stopperClimb: true } : {}, process.env.NOREFLECT ? { noReflect: true } : {}, process.env.NOCULL ? { noCull: true } : {}, process.env.CATCH ? { catchMode: process.env.CATCH } : {}, process.env.PICK ? { pick: process.env.PICK } : {}, process.env.NOCLIMB ? { noClimbKind: -1 } : {}, process.env.SET ? { set: process.env.SET, noTarget: true } : {})); if (process.env.GOAL) S.goal = +process.env.GOAL; for (let i = 0; i < 120; i++) K.step(S, { L: 0, R: 0 }); if (process.env.START) { const [sx, sy, sz, sd] = process.env.START.split(',').map(Number); S.volume = 4 / 3 * Math.PI * Math.pow((sd - 0.02) / 200, 3); S.diam = sd; S.pos = [sx, sy + sd / 2, sz]; for (let i = 0; i < 30; i++) K.step(S, { L: 0, R: 0 }); }   // START=x,groundY,z,diam: begin from a given size and place (to test the end of a stage without playing all of it)
 const key = (i, j) => i * 100000 + j, ang = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
-// ray mode stands on the collision data, so the planner looks at that ground (and boxes) instead of the rendered map
-const SUP = (S, x, z, a, b) => { if (!S.ray) return K.supportAt(S, x, z, a, b); const f = K.hitFloorAt(S, x, z, a), o = K.supportAt(S, x, z, a, b, true); return f === null ? o : o === null ? f : Math.max(f, o); };
-const GND = (G, x, z, y) => (S.ray ? K.hitFloorAt(S, x, z, y) : K.groundAt(G, x, z, y));
+// PLANHIT=1: plan on the collision ground (and boxes) that ray mode stands on, instead of the rendered map
+const PLANHIT = !!process.env.PLANHIT;   // off by default: planning on the collision ground made S001 worse (124 of 294 picked at frame 6000 with the rendered map, 83 with it)
+const SUP = (S, x, z, a, b) => { if (!S.ray || !PLANHIT) return K.supportAt(S, x, z, a, b); const f = K.hitFloorAt(S, x, z, a), o = K.supportAt(S, x, z, a, b, true); return f === null ? o : o === null ? f : Math.max(f, o); };
+const GND = (G, x, z, y) => (S.ray && PLANHIT ? K.hitFloorAt(S, x, z, y) : K.groundAt(G, x, z, y));
 // REACH: fraction of the radius the bot counts on for the engine pickup test (a margin, so it does not stop exactly at the edge of the hit region)
 const REACH = +(process.env.REACH || 0.9);
 const trap = [];   // {x, z, r, until}: places where the ball got stuck (a corner between solid things): the planner treats them as blocked for a while
