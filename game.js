@@ -41,18 +41,18 @@ const P = prog(`
   uniform mat4 uVP; uniform mat4 uModel; varying vec3 vN; varying vec2 vUv;
   void main() { gl_Position = uVP * (uModel * vec4(aPos, 1.0)); vN = mat3(uModel) * aNrm; vUv = aUv; }`,
 `
-  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec3 uLight;
+  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec3 uLight; uniform float uAlpha; uniform float uFlat;
   void main() {
     vec4 c = uUseTex > 0.5 ? texture2D(uTex, vUv) : vec4(uTint, 1.0);
     if (c.a < 0.002) discard;   // the engine's alpha test is GL_NOTEQUAL 0 (A117); the rest of the alpha is blended below
     vec3 n = normalize(vN);
     // uLight.z = 1: the engine's fixed-function light. Ambient 0.3 (light) + 0.2 (GL default scene ambient), diffuse 1.0, direction (42, -349, -29) from the binary with y flipped for our y-up frame (A117). Others: my presets
     float l = uLight.z > 0.5 ? min(uLight.x + uLight.y * max(dot(n, normalize(vec3(42.0, 349.0, -29.0))), 0.0), 1.0) : uLight.x + uLight.y * abs(dot(n, normalize(vec3(0.4, 0.8, 0.5))));
-    gl_FragColor = vec4(c.rgb * l, c.a);
+    gl_FragColor = vec4(c.rgb * (uFlat > 0.5 ? 1.0 : l), c.a * uAlpha);
   }`);
 const L = { pos: gl.getAttribLocation(P, 'aPos'), nrm: gl.getAttribLocation(P, 'aNrm'), uv: gl.getAttribLocation(P, 'aUv'),
   vp: gl.getUniformLocation(P, 'uVP'), model: gl.getUniformLocation(P, 'uModel'),
-  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint'), light: gl.getUniformLocation(P, 'uLight') };
+  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint'), light: gl.getUniformLocation(P, 'uLight'), alpha: gl.getUniformLocation(P, 'uAlpha'), flat: gl.getUniformLocation(P, 'uFlat') };
 
 // ---- loading (same data layout as the viewer) ----
 const pow2 = n => (n & (n - 1)) === 0;
@@ -134,6 +134,14 @@ function makeBallCore(cg, no) {
   return { vbo, ibo, n: sub.n, tex: cg.texs[sub.tex], data, base, dir, mult: new Float32Array(nv).fill(1), dirty: true };
 }
 
+// the ripple model GiFx02 from GAMEDATA: four points at +-50 cm in x and z, normal up, uv 1/64 in from the edges (read with tools/mdl.py)
+let ripQ = null;
+function makeRippleQuad() {
+  const v = new Float32Array([-50,0,-50, 0,1,0, 0.015625,0.984375,  50,0,-50, 0,1,0, 0.984375,0.984375,  50,0,50, 0,1,0, 0.984375,0.015625,  -50,0,50, 0,1,0, 0.015625,0.015625]);
+  const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+  const ibo = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
+  return { vbo, ibo, tex: UI.FX2 ? makeTex(UI.FX2) : null };
+}
 // ---- state ----
 let play = null, og = null, mg = null, ou = null, ball = null, S = null;
 const CAM_FRAMES = 32;   // frames a camera row change takes (mission struct word 4, FUN_00010d20)
@@ -232,7 +240,7 @@ function drawIcon(now) {   // renders lastPick's model into the bottom left 128 
   const c = [0, 1, 2].map(k => (i.lo[k] + i.hi[k]) / 2), r = 0.5 * Math.hypot(i.hi[0] - i.lo[0], i.hi[1] - i.lo[1], i.hi[2] - i.lo[2]) || 1, a = now / 1000 * 1.4, ca = Math.cos(a), sa = Math.sin(a);
   const Rs = [ca, 0, sa, 0, 1, 0, -sa, 0, ca], t = [-(Rs[0] * c[0] + Rs[1] * c[1] + Rs[2] * c[2]), -(Rs[3] * c[0] + Rs[4] * c[1] + Rs[5] * c[2]), -(Rs[6] * c[0] + Rs[7] * c[1] + Rs[8] * c[2])];
   const vp = M.mul(M.persp(0.5, 1, r * 0.2, r * 10), M.look([0, r * 1.3, r * 3.4], [0, 0, 0], [0, 1, 0]));
-  gl.useProgram(P); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv); bindGroup(og); drawModel(og, m, M.fromR3(Rs, t, 1));
   iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
   gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -294,7 +302,7 @@ function draw(alpha) {
   const far = FARMODE === 'old' ? Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3) : (play.mis.far || 800);   // The scene camera (the singleton FUN_0002bca8 draws the world with) gets the FIRST near/far pair of GRAPHICS (A52); the second pair goes to another object. Far is fixed per stage, 800 cm in stage 1. ?far=old brings back the longer clip range I used before
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
-  gl.useProgram(P); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
+  gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // map
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
@@ -303,6 +311,18 @@ function draw(alpha) {
   for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
+  // water ripples (A139): the engine draws the GiFx02 quad (100 cm, flat) at the water point with depth test GL_ALWAYS (FUN_00034d58). Lighting state, blend mode and draw order are my guesses: unlit, normal alpha blend, before the ball
+  if (S.ripples && S.ripples.length) {
+    if (!ripQ) ripQ = makeRippleQuad();
+    if (ripQ.tex) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, ripQ.vbo); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ripQ.ibo);
+      gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(L.nrm, 3, gl.FLOAT, false, 32, 12); gl.vertexAttribPointer(L.uv, 2, gl.FLOAT, false, 32, 24);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ripQ.tex); gl.uniform1f(L.use, 1); gl.uniform1f(L.flat, 1);
+      gl.disable(gl.CULL_FACE); gl.depthFunc(gl.ALWAYS); gl.depthMask(false);
+      for (const r of S.ripples) { gl.uniform1f(L.alpha, r.alpha); gl.uniformMatrix4fv(L.model, false, M.fromR3([1,0,0, 0,1,0, 0,0,1], r.pos, r.scale)); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0); }
+      gl.depthMask(true); gl.depthFunc(gl.LESS); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); setCull();
+    }
+  }
   const bpos = pos; pulse *= 0.86;
   G.vp = vp.slice ? vp.slice() : vp;
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
@@ -338,7 +358,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png' };
+const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -401,6 +421,11 @@ function drawHud() {
     const moving = S.speed > 0.05 && (Math.abs(S.input && S.input.L || 0) > 0.2 || Math.abs(S.input && S.input.R || 0) > 0.2), fr = S.dash ? (S.frame >> 2 & 1 ? 7 : 11) : moving ? [0, 1, 2, 3][ouji.pat % 4] : 0, ph = es * 0.66;
     const OX = [[24, 146, 268, 390], [20, 144, 267, 386], [22, 143, 265, 382]], OY = [12, 174, 335], rw = ph * 96 / 152;   // frame rectangles measured from the sheet
     hx.drawImage(UI.OUJI, OX[fr >> 2][fr & 3], OY[fr >> 2], 96, 152, W - rw - es * 0.04, H - ph - es * 0.02, rw, ph);
+    if (S.hitWater && UI.OUJI2) {   // in water the HUD puts a snorkel head (GiOUJI2, 35 px cells at (1 + 36 col, 1 + 36 row), the same frame index as the portrait) over the prince's head, 12 px right and 5 px down of the portrait (FUN_00033bac, A139). The two tilted heads for the leaning dash frames have no table entry that I found: their place is a guess
+      const k = rw / 96, px = W - rw - es * 0.04, py = H - ph - es * 0.02, c = fr & 3, r = fr >> 2;
+      if (c < 3) hx.drawImage(UI.OUJI2, 2 + 72 * c, 2 + 72 * r, 70, 70, px + 3 * k, py - 1 * k, 70 * k, 70 * k);
+      else { const t = r === 1 ? [2, 232, 70, 56] : [74, 233, 70, 55]; hx.drawImage(UI.OUJI2, t[0], t[1], t[2], t[3], px + 5 * k, py + 21 * k, t[2] * k, t[3] * k); }
+    }
   }
   // touch stick: drawn where it is held, and parked at the lower left on touch screens while idle
   { const p = pads.S, coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches; if (p || coarse) { const ps = 150, bx = p ? p.ox : ps * 0.75 + 14, by = p ? p.oy : H - ps * 0.75 - 18;
@@ -512,7 +537,8 @@ function frame(now) {
       else if (ev.type === 'crush') KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_03' : 'KD_SE_game_04');   // reqCrush (FUN_00045cb8): id 9 under 1 m, id 10 from 1 m (A99, A100)
       else if (ev.type === 'crumble') { KSnd.se(S.diam * 10 < 1000 ? 'KD_SE_game_05' : 'KD_SE_game_06'); bang = performance.now(); }   // reqCrumble (FUN_00045cf4): id 11 under 1 m, 12 from 1 m (A99)
       else if (ev.type === 'flip') { KSnd.se('KD_SE_game_13'); burst(10); }   // Jump180 start plays sound id 0x13 = game_13 (FUN_00025e30, A101)
-      else if (ev.type === 'brake') KSnd.se('KD_SE_game_12');   // SND_SE_BRAKE = id 0x12 = game_12 (FUN_0001ee7c, A101)
+      else if (ev.type === 'brake') KSnd.se('KD_SE_game_12');
+      else if (ev.type === 'splash') KSnd.se('KD_SE_game_29');   // SND_SE_SPLASH = id 28 = game_29: first frame in water while flying (KatamariHit.cppi sReaction, A101, A139)   // SND_SE_BRAKE = id 0x12 = game_12 (FUN_0001ee7c, A101)
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
     if (gotPick) KSnd.se('KD_SE_game_0' + Math.floor(Math.random() * 3));   // MonoHit: when anything was picked up this frame, one of SND_SE_CATCH0..2 (ids 6 to 8 = game_00 to game_02) at random (A99)
@@ -534,7 +560,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=38`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=39`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }

@@ -99,6 +99,40 @@
     const va = d3*d6-d5*d4; if (va <= 0 && (d4-d3) >= 0 && (d5-d6) >= 0) { const w = (d4-d3)/((d4-d3)+(d5-d6)); return [bx+w*(cx-bx), by+w*(cy-by), bz+w*(cz-bz)]; }
     const dn = 1/(va+vb+vc), v = vb*dn, w = vc*dn; return [ax+abx*v+acx*w, ay+aby*v+acy*w, az+abz*v+acz*w];
   }
+  // ---- water (A139): the map's HIT_WAT layer (8 stages). In the engine (Katamari::sWater, KatamariHit.cppi) it is only a trigger: a vertical test line from 10 diameters above the ball to one radius below its centre; where it
+  // crosses a water polygon the ball is "in water", which makes a ripple every 8 frames (KATA_RIPPLE_WAIT, the reset value in FUN_0001f4dc) and, on the first contact while flying, the splash sound (id 28). There is no collision, drag or speed change ----
+  const RIPPLE_WAIT = 8;
+  function buildWater(flat) {
+    const n = flat.length / 9, bb = new Float32Array(n * 4);
+    for (let t = 0; t < n; t++) { const o = t * 9; bb[t*4] = Math.min(flat[o], flat[o+3], flat[o+6]); bb[t*4+1] = Math.max(flat[o], flat[o+3], flat[o+6]); bb[t*4+2] = Math.min(flat[o+2], flat[o+5], flat[o+8]); bb[t*4+3] = Math.max(flat[o+2], flat[o+5], flat[o+8]); }
+    return { tris: Float32Array.from(flat), bb, n };
+  }
+  // highest water surface point on the test line through (x, z) between yLo and yHi, or null
+  function waterAt(W, x, z, yLo, yHi) {
+    const T = W.tris, B = W.bb; let best = null;
+    for (let t = 0; t < W.n; t++) {
+      if (x < B[t*4] || x > B[t*4+1] || z < B[t*4+2] || z > B[t*4+3]) continue;
+      const o = t * 9, ax = T[o], ay = T[o+1], az = T[o+2], bx = T[o+3] - ax, by = T[o+4] - ay, bz = T[o+5] - az, cx = T[o+6] - ax, cy = T[o+7] - ay, cz = T[o+8] - az;
+      const det = bx * cz - bz * cx; if (Math.abs(det) < 1e-9) continue;       // edge-on in the xz plane
+      const px = x - ax, pz = z - az, u = (px * cz - pz * cx) / det, v = (bx * pz - bz * px) / det;
+      if (u < 0 || v < 0 || u + v > 1) continue;
+      const y = ay + u * by + v * cy; if (y >= yLo && y <= yHi && (best === null || y > best)) best = y;
+    }
+    return best;
+  }
+  // ripple effect (FUN_00034924): age in frames; alpha rises 0 to 1 over 10 frames and falls to 0 over the next 20; scale = scale100 * (0.5 + min(1, age / 30)); gone at 30 frames. The model is a flat 100 cm quad (GiFx02)
+  function waterStep(S, R) {
+    for (let i = S.ripples.length - 1; i >= 0; i--) {
+      const r = S.ripples[i], t = r.age; r.alpha = t < 10 ? t / 10 : Math.max(0, 1 - (t - 10) / 20); r.age = t + 1; r.scale = r.sc100 * (0.5 + Math.min(1, r.age / 30));
+      if (r.age / 30 >= 1) S.ripples.splice(i, 1);
+    }
+    const W = S.water; if (!W) return;
+    const was = S.hitWater, yw = waterAt(W, S.pos[0], S.pos[2], S.pos[1] - R, S.pos[1] + 10 * S.diam); S.hitWater = yw !== null;
+    if (yw === null) return;
+    S.waterPos = [S.pos[0], yw, S.pos[2]];
+    if (!was && !S.grounded) S.events.push({ type: 'splash' });               // sReaction: first frame in water while KSTAT(Fly)
+    if (--S.rippleWait <= 0) { S.rippleWait = RIPPLE_WAIT; if (S.ripples.length < 10) S.ripples.push({ pos: S.waterPos.slice(), age: 0, sc100: S.diam / 100, alpha: 0, scale: S.diam / 200 }); }   // 10 ripples at most (the effect pool)
+  }
   // push the ball out of steep collision triangles, horizontally. Returns the push directions used (unit xz) so velocity can be cut
   // Sloped faces (WALL_NY < |ny| < FLAT_NY, ramps) are pushed out of in 3D from above so the ball rides up them (P19). Sets S.rampLift when it lifted the ball.
   function hitWalls(S, R, steepOnly, riser) {
@@ -162,7 +196,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -685,6 +719,7 @@
     const rc = S.recover; if (rc && S.pos[1] < -rc[0]) {
       S.pos = [rc[1], Math.max(-rc[2], 5) + S.diam, rc[3]]; S.vy = 0; S.v = [0, 0]; S.speed = 0; S.yaw = rc[4]; dashCancel(S, true); S.events.push({ type: 'recover' });
     }
+    waterStep(S, R);
     // pickup
     const cdm = S.diam * 10;
     for (const o of S.objs) {
@@ -710,6 +745,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
