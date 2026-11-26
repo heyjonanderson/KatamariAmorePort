@@ -94,6 +94,7 @@ for (let f = 0; f < maxF && !S.won && S.frame < maxF && !(STOPDIAM && S.diam >= 
 if (INPLOG) require('fs').writeFileSync(INPLOG, JSON.stringify(INP));
 console.log(`hold-in-wall frames ${globalThis.__holdFrames || 0}, shed ${S.crumbled}`);
 if (S.fastFrames) console.log(`fast frames (move >= radius): ${S.fastFrames}`);
+if (S.hitHist) console.log(`hits per frame (ground+wall, ray mode): max ${S.maxHits}, histogram ${JSON.stringify(S.hitHist.map(v => v || 0))}`);
 console.log(`${stage}: frames ${S.frame} (${(S.frame / 30).toFixed(0)} s), picked ${S.picked}/${S.objs.length}, diam ${S.diam.toFixed(2)} cm, goal ${S.goal}, won ${S.won}`); { const t = S.objs.find(o => o.n === S.target); if (t) console.log('  target', t.n, 'state', t.state, 'path t', t.path && t.path.t.toFixed(3), 'ball', S.pos.map(v => v.toFixed(0)).join(',')); }
 if (log.length) console.log('  ' + log.slice(0, 8).join('\n  '));
 if (!S.won) { const R = K.radius(S), rem = S.objs.filter(o => o.state === 'map'), cat = rem.filter(o => o.catchMm <= S.diam * 10);

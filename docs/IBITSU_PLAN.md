@@ -39,5 +39,6 @@ Lump lengths from the last 12 attached objects with tips (max 6), a lift of the 
 ## Open points before stage 4
 
 - `_MAX_DISTORT`, `_MAX_HITINFO`, `_MAX_DISTORT_SCALE` and `IBITSU_WORK_NUM` are macros in headers that were not shipped. They need the binary (array sizes and constants in `sRoll`, `sCheckDistort`, `gYm_SeGameReq_Ibitsu`).
+  Measured instead of guessed: the port keeps one hit per normal, and in a 3000 frame run of S001 (early ball) it never has more than 3 hits in a frame (histogram printed by `tests/bot2.js` as "hits per frame"). The rays number at most 30 (5 edge + 25 distort), so a cap of 30 or more never bites. A cap below that would only matter for a lumpy late-game ball; not measured there yet.
 - The radius vectors are set in `Katamari::sGetVector` (found, in A145).
 - HITSYS internals beyond the segment test: the one hit per normal rule is in `sRegistHitInfo`, but which polygons the grid returns and in what order is HITSYS (binary only).

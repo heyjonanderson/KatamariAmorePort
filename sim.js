@@ -829,6 +829,7 @@
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.lastRay = { c, old: oldP };
+      { const nh = c.ground.length + c.wall.length; if (nh > (S.maxHits || 0)) S.maxHits = nh; S.hitHist = S.hitHist || []; S.hitHist[nh] = (S.hitHist[nh] || 0) + 1; }   // diagnostic: hits per frame, for the _MAX_HITINFO question (A146)
       S.forceReflect = c.fastHit; if (c.fast) S.fastFrames = (S.fastFrames || 0) + 1;   // KSTAT ForceReflect / HitFast: a hit by the swept fast rays forces the reflection (no NonReflectFlyTime skip) and, with ground only, no crumble
       S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
