@@ -230,14 +230,40 @@
   // Ray stage 2 (A146): the engine's ground and wall hit lists (Katamari::sGround, gYm_KatamariMakeLandformNormal, sRegistHitInfo, sGetHitInfo,
   // sGetAdjustGround, sGetAdjustWall, sAdjustPosi). Output only: nothing in step() calls it yet. Returns the lists and the position correction.
   // old = position at the start of the frame, S.pos = position now. The correction is subtracted from the position (as in sAdjustPosi).
+  // Ray stage 4 (A148): the distort points of Katamari::sRoll, Mono::gYm_MonoIbitsu and sSetPosition. Index 0 is the free point (-ground normal x R on the ground, straight down in
+  // the air), 1 to 18 the fixed points (table direction turned by the ball, length R: their f32Len is never above R), 19 to 24 the fluid points (lumps).
+  // The fluid points are the farthest tip of each of the newest 12 attached objects that have ibitsu tips, the first 6 of those in that order (not the longest 6).
+  const IB_FLUID0 = 19, IB_FLUID_N = 6, IB_DEPTH = 12, IB_MAXSCALE = 2.5;
+  function distortPoints(S, R, pos, speed, climbing) {
+    const pts = [], gn = S.grounded && S.gNorm ? S.gNorm : [0, 1, 0];
+    pts.push({ i: 0, p: [pos[0] - gn[0] * R, pos[1] - gn[1] * R, pos[2] - gn[2] * R], f32Len: R });
+    if (IBI18) IBI18.forEach((q, i) => { const o = mvec(S.R, [q[0], -q[1], -q[2]]), l = Math.hypot(o[0], o[1], o[2]) || 1, n = [o[0] / l, o[1] / l, o[2] / l]; pts.push({ i: i + 1, n, p: [pos[0] + n[0] * R, pos[1] + n[1] * R, pos[2] + n[2] * R], f32Len: R }); });
+    if (!climbing && !S.wheelSpin && S.ibiList && S.ibiList.length) {
+      const tp = tableParams(S), vN = tp.speed * tp.rF, vD = tp.speed * tp.rD, sr = speed >= vD ? 0 : speed <= vN ? 1 : 1 - (speed - vN) / Math.max(vD - vN, 1e-6);
+      let depth = IB_DEPTH, k = 0;
+      for (let j = S.ibiList.length - 1; j >= 0 && depth > 0 && k < IB_FLUID_N; j--) {
+        const o = S.ibiList[j]; if (o.state !== 'ball') continue; depth--;
+        let far = 0, fn = null; for (const p of S.info[o.n].ibi) { const q = mvec(S.R, mvec(o.lrot, p).map((v, a) => v + o.lpos[a])), l = Math.hypot(q[0], q[1], q[2]); if (l > far) { far = l; fn = [q[0] / l, q[1] / l, q[2] / l]; } }
+        if (!fn) continue;
+        let len = R + (far - R) * sr, f32Len = far; if (len / R > IB_MAXSCALE) { f32Len = R * IB_MAXSCALE; len = f32Len; }   // sSetPosition: more than 2.5 R is cut to 2.5 R
+        pts.push({ i: IB_FLUID0 + k, n: fn, p: [pos[0] + fn[0] * len, pos[1] + fn[1] * len, pos[2] + fn[2] * len], f32Len, o }); k++;
+      }
+    }
+    const ib = S.ib; if (ib && ib.st && ib.no >= 0) {                                         // the planted point stays where it is (sSetPosition)
+      let pt = pts.find(q => q.i === ib.no); if (!pt) pts.push(pt = { i: ib.no, f32Len: ib.len });
+      pt.p = ib.posi.slice(); const d = [pt.p[0] - pos[0], pt.p[1] - pos[1], pt.p[2] - pos[2]], l = Math.hypot(d[0], d[1], d[2]) || 1; pt.n = [d[0] / l, d[1] / l, d[2] / l];
+    }
+    return pts;
+  }
   const IBI18 = (() => { try { return require('./tools/ibitsu_sph18.json').points; } catch (e) { return null; } })();
   function rayContacts(S, R, old, opt) {
     opt = opt || {}; const pos = S.pos, lists = [[], []], dist = opt.dist !== false;
     const mv = [pos[0]-old[0], pos[1]-old[1], pos[2]-old[2]], mlen = Math.hypot(mv[0], mv[1], mv[2]);
     const up = [0, 1, 0];
-    const reg = (type, n, adj, r, len, tag, pt) => {
-      const L = lists[type]; for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (Math.hypot(adj[0], adj[1], adj[2]) > h.len) { h.n = n; h.adj = adj; h.len = Math.hypot(adj[0], adj[1], adj[2]); h.r = r; h.tag = tag; h.pt = pt; } return; } }
-      L.push({ n, adj, len: Math.hypot(adj[0], adj[1], adj[2]), r, tag, pt });
+    const reg = (type, n, adj, r, tag, pt, vec, hp) => {
+      const L = lists[type], len = Math.hypot(adj[0], adj[1], adj[2]), di = typeof tag === 'number' ? tag : -1;    // di: the distort point index of the ray, -1 for the edge rays
+      for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (len > h.len) { h.n = n; h.adj = adj; h.len = len; h.r = r; h.tag = tag; h.pt = pt; h.di = di; h.vec = vec; h.hp = hp; } return; } }
+      L.push({ n, adj, len, r, tag, pt, di, vec, hp });
     };
     const cast = (p0, p1, tag) => {
       const h = segHit(S, p0, p1); if (!h) return;
@@ -245,7 +271,7 @@
       const n = h.n, wall = n[1] <= WALL_NY;                                   // up component at or below cos(WallAngle x 90): a wall (A143)
       if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return;   // ground seen by the upper edge rays does not count
       const inner = (n[0]*d[0] + n[1]*d[1] + n[2]*d[2]) / sl, k = inner * sl * (1 - h.r - 0.0005);
-      reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, h.t);
+      reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, h.t, d, [p0[0] + d[0]*h.r, p0[1] + d[1]*h.r, p0[2] + d[2]*h.r]);
     };
     // edge rays (the walk case; the fast case is not ported): old position + offset to new position + 15% of the move + offset
     const left = (() => { const h = Math.hypot(mv[0], mv[2]); const dx = h > 1e-9 ? mv[0]/h : 0, dz = h > 1e-9 ? mv[2]/h : 1; return [-dz * R, 0, dx * R]; })();   // rotY(-90) of the flat move direction (left and right are both used, so the sign does not matter)
@@ -254,19 +280,15 @@
     const lu = norm([left[0]+upv[0], left[1]+upv[1], left[2]+upv[2]]), ru = norm([right[0]+upv[0], right[1]+upv[1], right[2]+upv[2]]);
     const tgt = [pos[0] + (mlen > 1e-9 ? mv[0]/mlen : 0) * R * 0.15, pos[1] + (mlen > 1e-9 ? mv[1]/mlen : 0) * R * 0.15, pos[2] + (mlen > 1e-9 ? mv[2]/mlen : 0) * R * 0.15];
     if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
-    // distort rays: centre to each point (point 0 straight down, then the 18 fixed points of the table, rotated and scaled with the ball)
-    if (dist) {
-      const gn = S.grounded && S.gNorm ? S.gNorm : up;                                  // sRoll: point 0 is -groundNormal x R on the ground, straight down when flying
-      cast([pos[0], pos[1], pos[2]], [pos[0] - gn[0] * R, pos[1] - gn[1] * R, pos[2] - gn[2] * R], 'd0');
-      if (IBI18) { const sc = R / 50; IBI18.forEach((q, i) => { const o = mvec(S.R, [q[0] * sc, -q[1] * sc, -q[2] * sc]); cast([pos[0], pos[1], pos[2]], [pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]], 'd' + (i + 1)); }); }
-    }
+    // distort rays: centre to each distort point (A148: fixed 1 to 18, fluid 19 to 24, the free point 0)
+    if (dist) { const pts = opt.pts || distortPoints(S, R, pos, opt.speed !== undefined ? opt.speed : mlen, !!opt.climbing); for (const q of pts) cast([pos[0], pos[1], pos[2]], q.p, q.i); }
     // per axis: the largest positive plus the largest negative adjustment (sGetAdjustGround / sGetAdjustWall)
     const sum = L => { const a = [0, 0, 0], b = [0, 0, 0]; for (const h of L) for (let k = 0; k < 3; k++) { const v = h.adj[k]; if (v < 0) { if (b[k] > v) b[k] = v; } else if (v > 0) { if (a[k] < v) a[k] = v; } } const r = [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; return r.map(v => Math.abs(v) < 1e-4 ? 0 : v); };
     const adjG = sum(lists[0]), adjW = sum(lists[1]); let wn = [0, 0, 0]; for (const h of lists[1]) { wn[0] += h.n[0]; wn[1] += h.n[1]; wn[2] += h.n[2]; }
     // sAdjustPosi: the wall part only counts when the flat move runs along or into the wall (inner <= 0.01)
     let useWall = false; if (lists[1].length) { const mh = Math.hypot(mv[0], mv[2]), wh = Math.hypot(wn[0], wn[2]); if (mh < 1e-9 || wh < 1e-9) useWall = !!opt.stop || mh < 1e-9; else useWall = !!opt.stop || (mv[0]*wn[0] + mv[2]*wn[2]) / (mh * wh) <= 0.01; }
     const total = [adjG[0] + (useWall ? adjW[0] : 0), adjG[1] + (useWall ? adjW[1] : 0), adjG[2] + (useWall ? adjW[2] : 0)];
-    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total };
+    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total, pts: opt.pts || null };
   }
 
   // ---- state ----
@@ -281,7 +303,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      noCeil: !!opts.noCeil, ceilHit: false, ray: opts.ray !== undefined ? !!opts.ray : (typeof process !== 'undefined' && !!process.env && process.env.KRAY === '1'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      noCeil: !!opts.noCeil, ceilHit: false, ib: { st: 0, no: -1, len: 0, posi: [0, 0, 0], vec: [0, 0, 0], fluidVec: [0, 0, 0], rot: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, ray: opts.ray !== undefined ? !!opts.ray : (typeof process !== 'undefined' && !!process.env && process.env.KRAY === '1'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -628,7 +650,7 @@
      if (cw.forbid > 0) cw.forbid--;                    // sUpdateTime
     const cwOff = () => { if (cw.on) { if (cw.eff <= 0) { cw.forbid = CW.forbid; } else { cw.eff--; return; } } cw.on = false; cw.top = false; cw.startY = 0; cw.topT = 0; };   // gYm_KatamariDisableClimbWall
     // lumps lift the ball: the surface point that faces down decides how high the centre rides. Eased so it does not jitter (A64)
-    S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
+    S.lumps = lumpsOf(S, R); { const dn = mvec(mtr(S.R), [0, -1, 0]), want = S.lumps.length && !S.ray ? Math.min((lumpMult(S.lumps, dn) - 1) * R, LUMP_LIFT_MAX * R) : 0; S.lift += (want - S.lift) * 0.3; if (S.lift < 1e-4) S.lift = 0; }
     if (S.ctrlOff > 0) { S.ctrlOff--; inp = { L: 0, R: 0, dash: false, flip: false }; }   // OujiControlDisableTime: no prince input for a few frames after a crush (A100)
     S.pos[1] -= S.liftApplied; S.liftApplied = 0;   // the physics below runs on the round ball; the lift is added back at the end of the step
     // single stick (inp.sx, inp.sz, x right, z forward): both sticks carry the same vector (A121). Otherwise two vertical sticks L and R
@@ -740,7 +762,10 @@
       const ml = Math.hypot(mx, mz) || 1; return [-mx / ml, -mz / ml];
     };
     const addBlock = (mx, mz) => { if (!(mx || mz) || !wallAt(S.pos[0] + mx, S.pos[2] + mz)) return; const n = blockN(S.pos[0] + mx, S.pos[2] + mz, mx, mz); addWall(n[0], n[1], null); };
-    if (dx || dz) {
+    const ibReset = () => { const b = S.ib; b.st = 0; b.no = -1; b.len = R; b.vec = [0, 0, 0]; b.rot = [1, 0, 0, 0, 1, 0, 0, 0, 1]; };   // gYm_KataHitResetIbitsu
+    if (S.ray && S.wheelSpin) ibReset();                                              // gYm_KatamariIbitsu: wheel spin resets the lumps
+    const rocking = !!(S.ray && S.ib.st && !cw.on);                                  // FLUID state: the ball swings about the planted lump tip instead of moving freely (gYm_KatamariIbitsuMakeMatrix)
+    if ((dx || dz) && !rocking) {
       const nx = S.pos[0] + dx, nz = S.pos[2] + dz;
       if (ok(nx, nz)) { S.pos[0] = nx; S.pos[2] = nz; mx = dx; mz = dz; }
       else if (ok(S.pos[0] + dx, S.pos[2])) { S.pos[0] += dx; mx = dx; vz *= 0.3; addBlock(0, dz); }
@@ -775,8 +800,16 @@
     if (S.ray) {
       // ray mode (A147): the whole frame's move, then the engine's rays (sGround), then sAdjustPosi
       if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }   // sStatFly bookkeeping on last frame's state
-      const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy;
-      const c = rayContacts(S, R, oldP, { stop: false });
+      if (rocking) {
+        const b = S.ib, d = Math.hypot(b.vec[0], b.vec[1], b.vec[2]), mh = Math.hypot(vx, vz);
+        let w = d <= 1e-4 ? 0 : mh / d; w = Math.max(-Math.PI, Math.min(Math.PI, w));
+        if (w > 0 && mh > 1e-9) {
+          const m = axisAngle([vz / mh, 0, -vx / mh], w); b.rot = mmul(m, b.rot); S.R = mmul(m, S.R);   // mDistortRot = m x mDistortRot, mRot = m x mRot
+        }
+        const v = mvec(b.rot, [-b.fluidVec[0], -b.fluidVec[1], -b.fluidVec[2]]); S.pos = [b.posi[0] + v[0], b.posi[1] + v[1], b.posi[2] + v[2]]; S.vy = 0; moved = 0;
+      } else { const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy; }
+      S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
+      const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
       const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
@@ -785,6 +818,31 @@
       if (supO !== null && S.pos[1] - R <= supO) { if (S.vy < 0 && !S.grounded && !hitG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, supO, [0, 1, 0]); S.pos[1] = supO + R; S.vy = 0; boxG = true; }
       if (hitG && S.vy < 0) { if (!S.grounded && !boxG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, 0, S.gNorm); S.vy = 0; }
       S.grounded = !cw.on && (hitG || boxG); S.rampLift = hitG && !c.ground.some(h => h.n[1] > 0.9999);
+      // sGetHitInfo + sReaction + sCheckDistort (A148): the ground hit that touches first (smallest ratio) names the distort point that may start or continue a lump rock
+      { const b = S.ib; let no = -1, mr = 2, hv = null, hp = null;
+        for (const h of c.ground) if (h.r < mr) { mr = h.r; no = h.di; hv = h.vec; hp = h.hp; }
+        if (b.st) { b.posi = [b.posi[0] - c.adjW[0], b.posi[1] - c.adjW[1], b.posi[2] - c.adjW[2]]; }   // fvDistortPosi -= fvAdjustWall
+        let check = -1, dlen = R, cross = null, vec = null;
+        if (no >= 0) {
+          const pt = S.dpts.find(q => q.i === no);
+          if (b.st) { if (no !== b.no) { check = no; dlen = pt ? pt.f32Len : R; vec = hv; cross = [hp[0] + hv[0] * 0.005, hp[1] + hv[1] * 0.005, hp[2] + hv[2] * 0.005]; } else check = b.no; }
+          else { check = no; dlen = pt ? pt.f32Len : R; vec = hv; cross = hp; }
+        } else if (hv) vec = hv;
+        if (c.ground.length + c.wall.length === 0) ibReset();                          // no hit at all: back to the free ball
+        else {
+          let res = 0;
+          if (check > 0) { if (check === b.no) res = 2; else if (dlen / R > 1) { res = 1; } }
+          if (res === 0) ibReset();
+          else if (res === 1) {
+            const pt = S.dpts.find(q => q.i === check);
+            if (check >= IB_FLUID0 && pt && pt.n) {                                     // sInitFluidIbitsu; the fixed points never get here (their f32Len is R)
+              b.st = 2; b.no = check; b.len = dlen; b.fluidVec = [pt.n[0] * pt.f32Len, pt.n[1] * pt.f32Len, pt.n[2] * pt.f32Len];
+              b.rot = [1, 0, 0, 0, 1, 0, 0, 0, 1]; b.vec = [vec[0] * 1.05, vec[1] * 1.05, vec[2] * 1.05];
+              b.posi = [S.pos[0] + b.vec[0], S.pos[1] + b.vec[1], S.pos[2] + b.vec[2]]; S.events.push({ type: 'ibitsu', len: dlen / R });
+            } else ibReset();
+          } else if (res === 2 && c.total[1] >= 1) b.posi[1] -= c.total[1];            // moving platform
+        }
+      }
       for (const h of c.wall) {
         const hl = Math.hypot(h.n[0], h.n[2]); if (hl < 0.3) continue;                 // ceilings and undersides do not count as wall faces for the climb and hold rules (A143)
         const nx = h.n[0] / hl, nz = h.n[2] / hl;
@@ -819,6 +877,7 @@
       if (ok1 && !cw.on && walls.length === 1) cw.wallTop = walls[0].o ? walls[0].o.top : meshTop;
       if (ok1) { if (!cw.top) cw.eff = 1; cw.forbid = 0; cw.on = true; }
       else cwOff();
+      if (S.ray && cw.on && S.ib.st) ibReset();                                        // sReaction: climbing ends the lump state
       if (cw.on) {                                                                      // sClimbWall
         if (cw.top) { cw.topT++; if (cw.topT > CW.topTime) cwOff(); }
         else {
