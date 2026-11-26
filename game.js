@@ -387,10 +387,11 @@ function drawHud() {
   if (!G.ready || !S) return;
   echoDraw(W, H);
   const gs = Math.max(120, Math.min(190, Math.min(W, H) * 0.3));
-  // size gauge: green gear, rainbow fills outward from the corner as the ball grows toward the goal
-  const prog = MODE === 'exact' ? 0 : Math.max(0, Math.min(1, (S.diam - S.startDiam) / (S.goal - S.startDiam)));
-  if (UI.SIZEB) hx.drawImage(UI.SIZEB, 0, 0, gs, gs);
-  if (UI.SIZEF) { hx.save(); hx.beginPath(); hx.moveTo(0, 0); hx.arc(0, 0, gs * (0.12 + 0.9 * prog), 0, Math.PI / 2); hx.closePath(); hx.clip(); hx.drawImage(UI.SIZEF, 0, 0, gs, gs); hx.restore(); }
+  // size gauge (A140, FUN_00031568): the green back gear (GiSIZEB) and the rainbow front gear (GiSIZEF) are both scaled from the screen corner by s = 0.3 + 0.7 * min(1.5, (diameter - start) / (goal - start)), and pulse against each other:
+  // back * (1 + 0.05 sin a), front * (1 - 0.05 sin a), where a steps by 45 degrees every 3 frames (24 frame cycle). Which of the two takes the plus sign is my guess (the back one is drawn first); gs is my full size
+  const prog = MODE === 'exact' ? 0 : Math.min(1.5, (S.diam - S.startDiam) / Math.max(S.goal - S.startDiam, 1e-6)), gsc = 0.3 + 0.7 * prog, pul = 0.05 * Math.sin(Math.PI / 4 * (Math.floor(S.frame / 3) + 1));
+  if (UI.SIZEB) { const w = gs * gsc * (1 + pul); hx.drawImage(UI.SIZEB, 0, 0, w, w); }
+  if (UI.SIZEF) { const w = gs * gsc * (1 - pul); hx.drawImage(UI.SIZEF, 0, 0, w, w); }
   // size number
   const nh = gs * 0.26; if (MODE !== 'exact') { hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiamHud(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore(); }   // Exact Size: the size is the puzzle, so it is not shown (tester)
   // goal marker text
