@@ -266,21 +266,32 @@
       for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (len > h.len) { h.n = n; h.adj = adj; h.len = len; h.r = r; h.tag = tag; h.pt = pt; h.di = di; h.vec = vec; h.hp = hp; } return; } }
       L.push({ n, adj, len, r, tag, pt, di, vec, hp });
     };
-    const cast = (p0, p1, tag) => {
-      const h = segHit(S, p0, p1); if (!h) return;
-      const d = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]], sl = Math.hypot(d[0], d[1], d[2]); if (sl < 1e-9) return;
+    // returns 0 for no hit, 2 for a hit that is dropped (gYm_KatamariMakeLandformNormal returns 2), 1 for a registered hit. off: the ray's offset from the centre (fast rays are shifted back to the centre as sGround does)
+    const cast = (p0, p1, tag, off) => {
+      const h = segHit(S, p0, p1); if (!h) return 0;
+      const d = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]], sl = Math.hypot(d[0], d[1], d[2]); if (sl < 1e-9) return 0;
       const n = h.n, wall = n[1] <= WALL_NY;                                   // up component at or below cos(WallAngle x 90): a wall (A143)
-      if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return;   // ground seen by the upper edge rays does not count
-      const inner = (n[0]*d[0] + n[1]*d[1] + n[2]*d[2]) / sl, k = inner * sl * (1 - h.r - 0.0005);
-      reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, h.t, d, [p0[0] + d[0]*h.r, p0[1] + d[1]*h.r, p0[2] + d[2]*h.r]);
+      if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return 2;   // ground seen by the upper edge rays does not count
+      const inner = (n[0]*d[0] + n[1]*d[1] + n[2]*d[2]) / sl, k = inner * sl * (1 - h.r - 0.0005), o = off || [0, 0, 0];
+      reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, h.t, d, [p0[0] + d[0]*h.r - o[0], p0[1] + d[1]*h.r - o[1], p0[2] + d[2]*h.r - o[2]]);
+      return 1;
     };
-    // edge rays (the walk case; the fast case is not ported): old position + offset to new position + 15% of the move + offset
+    // edge rays (the walk case; the fast case is below): old position + offset to new position + 15% of the move + offset
     const left = (() => { const h = Math.hypot(mv[0], mv[2]); const dx = h > 1e-9 ? mv[0]/h : 0, dz = h > 1e-9 ? mv[2]/h : 1; return [-dz * R, 0, dx * R]; })();   // rotY(-90) of the flat move direction (left and right are both used, so the sign does not matter)
     const right = [-left[0], 0, -left[2]], upv = [0, R, 0];
     const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l*R, v[1]/l*R, v[2]/l*R]; };
     const lu = norm([left[0]+upv[0], left[1]+upv[1], left[2]+upv[2]]), ru = norm([right[0]+upv[0], right[1]+upv[1], right[2]+upv[2]]);
     const tgt = [pos[0] + (mlen > 1e-9 ? mv[0]/mlen : 0) * R * 0.15, pos[1] + (mlen > 1e-9 ? mv[1]/mlen : 0) * R * 0.15, pos[2] + (mlen > 1e-9 ? mv[2]/mlen : 0) * R * 0.15];
-    if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
+    const fast = mlen >= R && opt.edges !== false; let fastHit = false;                 // sCheckFast: the frame's move is at least the radius
+    if (fast) {
+      // sGround, fast case: five rays (centre, top, left, right, bottom) from the old position minus R x move direction to the new position plus it, each shifted back to the centre.
+      // The first one that hits and is not dropped ends the loop; the normal edge rays are skipped
+      const rm = [mv[0]/mlen*R, mv[1]/mlen*R, mv[2]/mlen*R], a0 = [old[0]-rm[0], old[1]-rm[1], old[2]-rm[2]], b0 = [pos[0]+rm[0], pos[1]+rm[1], pos[2]+rm[2]];
+      for (const [tag, off] of [['fcenter', [0, 0, 0]], ['top', upv], ['left', left], ['right', right], ['bottom', [0, -R, 0]]]) {
+        const hit = cast([a0[0]+off[0], a0[1]+off[1], a0[2]+off[2]], [b0[0]+off[0], b0[1]+off[1], b0[2]+off[2]], tag, off);
+        if (hit) fastHit = true; if (hit === 1) break;
+      }
+    } else if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
     // distort rays: centre to each distort point (A148: fixed 1 to 18, fluid 19 to 24, the free point 0)
     if (dist) { const pts = opt.pts || distortPoints(S, R, pos, opt.speed !== undefined ? opt.speed : mlen, !!opt.climbing); for (const q of pts) cast([pos[0], pos[1], pos[2]], q.p, q.i); }
     // per axis: the largest positive plus the largest negative adjustment (sGetAdjustGround / sGetAdjustWall)
@@ -289,7 +300,7 @@
     // sAdjustPosi: the wall part only counts when the flat move runs along or into the wall (inner <= 0.01)
     let useWall = false; if (lists[1].length) { const mh = Math.hypot(mv[0], mv[2]), wh = Math.hypot(wn[0], wn[2]); if (mh < 1e-9 || wh < 1e-9) useWall = !!opt.stop || mh < 1e-9; else useWall = !!opt.stop || (mv[0]*wn[0] + mv[2]*wn[2]) / (mh * wh) <= 0.01; }
     const total = [adjG[0] + (useWall ? adjW[0] : 0), adjG[1] + (useWall ? adjW[1] : 0), adjG[2] + (useWall ? adjW[2] : 0)];
-    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total, pts: opt.pts || null };
+    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total, pts: opt.pts || null, fast, fastHit };
   }
 
   // ---- state ----
@@ -535,7 +546,7 @@
   // sideways x 0.95, up x f32Reflection (0.55), all times the speed. Not at all if the flight was under NonReflectFlyTime (5 frames), which also kills small bounces. A hard fall also shakes objects off (power from FlyFallTime)
   const FLY_MIN = 5, FALL_MIN = 9, FALL_MAX = 70;     // s32NonReflectFlyTime, s32FlyReflectMinTime, s32FlyReflectMaxTime (kparam.json)
   function landingBounce(S, vmax, sup, nrm) {
-    if (S.flyT < FLY_MIN) return;
+    if (S.flyT < FLY_MIN && !S.forceReflect) return;                           // ForceReflect (a fast-ray hit) skips the NonReflectFlyTime rule
     const T = [S.v[0], S.vy, S.v[1]], V = Math.hypot(T[0], T[1], T[2]); if (V < 1e-6) return;
     let nx, ny, nz;
     if (nrm) { nx = nrm[0]; ny = nrm[1]; nz = nrm[2]; }                         // ray mode: the ground normal comes from the hit list (A147)
@@ -547,7 +558,7 @@
     S.reflV = [r[0] * 0.95 * V, r[2] * 0.95 * V]; S.reflVy = r[1] * REFL * V;
     dashCancel(S);                                           // gYm_OujiDashCancel
     const spd = Math.max(0, Math.min(1, (S.fallT - FALL_MIN) / (FALL_MAX - FALL_MIN)));       // sGetSpeedRatio, airborne and hit the ground
-    if (spd * refp > 0) crumbleHit(S, spd * refp, V, vmax);
+    if (spd * refp > 0 && !S.forceReflect) crumbleHit(S, spd * refp, V, vmax);   // sReflection: ForceReflect without a wall hit turns the crumble off
     S.events.push({ type: 'bounce', v: S.reflVy, fall: T[1] });
   }
   function crumbleHit(S, total, vIn, vmax) {                 // gYm_MonoCrumble
@@ -818,6 +829,7 @@
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.lastRay = { c, old: oldP };
+      S.forceReflect = c.fastHit; if (c.fast) S.fastFrames = (S.fastFrames || 0) + 1;   // KSTAT ForceReflect / HitFast: a hit by the swept fast rays forces the reflection (no NonReflectFlyTime skip) and, with ground only, no crumble
       S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
       const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
