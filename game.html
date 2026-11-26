@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Katamari Amore web port</title>
-<link rel="stylesheet" href="ui.css?v=45">
+<link rel="stylesheet" href="ui.css?v=46">
 <style>
   html, body { margin: 0; height: 100%; background: #101418; color: #fff; font: 15px/1.3 system-ui, sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
@@ -31,7 +31,7 @@
 <button id="bStop">Stop rolling</button>
 <button id="bDash">DASH</button>
 <button id="bTurn" title="U-turn (Q or E)"><svg viewBox="0 0 48 32" width="48" height="32"><path d="M10 28V14a12 12 0 0 1 24 0v6" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 17l10 12 10-12z" fill="#fff"/></svg></button>
-<div id="res" style="position:fixed;inset:0;display:none;background:#000a"><div class="kbox" id="rbox" style="background:none"><div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/KING/KinSKING.png)"></div><div class="dlg" id="rDlg"><div class="t"></div><div class="n">&#9660;</div></div><div class="small" id="rRetry" style="left:12px;top:10px;display:none">Retry</div><div class="small" id="rMenu" style="right:12px;top:10px;display:none">Stage select</div></div></div>
+<div id="res" style="position:fixed;inset:0;display:none;background:#000a"><div class="kbox" id="rbox" style="background:none"><div class="img" style="left:0;top:0;width:512px;height:512px;background-image:url(ui/KING/KinSKING.png)"></div><div class="img kng2" style="left:107px;top:35px;width:256px;height:64px;background-image:url(ui/KING/KinSKNG2.png)"></div><div class="dlg" id="rDlg"><div class="t"></div><div class="n">&#9660;</div></div><div class="small" id="rRetry" style="left:12px;top:10px;display:none">Retry</div><div class="small" id="rMenu" style="right:12px;top:10px;display:none">Stage select</div></div></div>
 <div id="pause" style="position:fixed;inset:0;display:none;align-items:center;justify-content:safe center;flex-direction:column;gap:8px;overflow-y:auto;padding:10px 0;background:#000b;z-index:5">
   <div style="font-size:26px">Paused</div>
   <button id="pResume">Resume</button><button id="pRestart">Restart</button><button id="pStop" style="display:none">Stop with this size</button><button id="pQuit" style="display:none">Finish Eternal mode</button><button id="pLight">Lighting</button><button id="pTex">Textures</button><button id="pOMin"></button><button id="pOQuiet"></button><button id="pOWide"></button><button id="pCatch">Catch size: </button><button id="pReport">Bug report</button><button id="pMenu">Back to stages</button>
@@ -45,10 +45,10 @@
 for (const e of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(e, ev => ev.preventDefault(), { passive: false });
 let lastTE = 0; document.addEventListener('touchend', ev => { const n = Date.now(); if (n - lastTE < 350 && !(ev.target.closest && ev.target.closest('#pause, #res'))) ev.preventDefault(); lastTE = n; }, { passive: false });
 </script>
-<script src="load.js?v=45"></script>
-<script src="audio.js?v=45"></script>
-<script src="text.js?v=45"></script>
-<script src="sim.js?v=45"></script>
-<script src="game.js?v=45"></script>
+<script src="load.js?v=46"></script>
+<script src="audio.js?v=46"></script>
+<script src="text.js?v=46"></script>
+<script src="sim.js?v=46"></script>
+<script src="game.js?v=46"></script>
 </body>
 </html>
