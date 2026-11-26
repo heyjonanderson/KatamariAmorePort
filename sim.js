@@ -227,6 +227,25 @@
     return best;
   }
 
+  // A solid object's hit data is its model's bounding box (MonoHit.cppi gYm_MonoHitInit: sHitData = model->boxHit; sCheckHitMap: "no detailed data yet, so a box"). The ball's segment is taken into the
+  // object's own frame (transpose of its rotation, relative to its position) and tested against lo..hi. Like the map polygons the box is one sided (outward faces): a segment that starts inside
+  // sees only back faces and hits nothing (A150). Returns {r, n} with r along the segment and n the world normal of the face it enters through
+  function boxSeg(o, p0, p1) {
+    const Rt = mtr(o.rot), a = mvec(Rt, [p0[0] - o.pos[0], p0[1] - o.pos[1], p0[2] - o.pos[2]]), b = mvec(Rt, [p1[0] - o.pos[0], p1[1] - o.pos[1], p1[2] - o.pos[2]]);
+    let tmin = 0, tmax = 1, ax = -1, sg = 0;
+    for (let k = 0; k < 3; k++) {
+      const d = b[k] - a[k];
+      if (Math.abs(d) < 1e-12) { if (a[k] < o.lo[k] || a[k] > o.hi[k]) return null; continue; }
+      let t1 = (o.lo[k] - a[k]) / d, t2 = (o.hi[k] - a[k]) / d, sn = -1;
+      if (t1 > t2) { const t = t1; t1 = t2; t2 = t; sn = 1; }
+      if (t1 > tmin) { tmin = t1; ax = k; sg = sn; }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return null;
+    }
+    if (ax < 0) return null;
+    const nl = [0, 0, 0]; nl[ax] = sg; return { r: tmin, n: mvec(o.rot, nl) };
+  }
+
   // Ray stage 2 (A146): the engine's ground and wall hit lists (Katamari::sGround, gYm_KatamariMakeLandformNormal, sRegistHitInfo, sGetHitInfo,
   // sGetAdjustGround, sGetAdjustWall, sAdjustPosi). Output only: nothing in step() calls it yet. Returns the lists and the position correction.
   // old = position at the start of the frame, S.pos = position now. The correction is subtracted from the position (as in sAdjustPosi).
@@ -261,14 +280,16 @@
     opt = opt || {}; const pos = S.pos, lists = [[], []], dist = opt.dist !== false;
     const mv = [pos[0]-old[0], pos[1]-old[1], pos[2]-old[2]], mlen = Math.hypot(mv[0], mv[1], mv[2]);
     const up = [0, 1, 0];
-    const reg = (type, n, adj, r, tag, pt, vec, hp) => {
+    const reg = (type, n, adj, r, tag, pt, vec, hp, mono) => {
       const L = lists[type], len = Math.hypot(adj[0], adj[1], adj[2]), di = typeof tag === 'number' ? tag : -1;    // di: the distort point index of the ray, -1 for the edge rays
-      for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (len > h.len) { h.n = n; h.adj = adj; h.len = len; h.r = r; h.tag = tag; h.pt = pt; h.di = di; h.vec = vec; h.hp = hp; } return; } }
-      L.push({ n, adj, len, r, tag, pt, di, vec, hp });
+      for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (len > h.len) { h.n = n; h.adj = adj; h.len = len; h.r = r; h.tag = tag; h.pt = pt; h.di = di; h.vec = vec; h.hp = hp; h.mono = mono || null; } return; } }
+      L.push({ n, adj, len, r, tag, pt, di, vec, hp, mono: mono || null });
     };
     // returns 0 for no hit, 2 for a hit that is dropped (gYm_KatamariMakeLandformNormal returns 2), 1 for a registered hit. off: the ray's offset from the centre (fast rays are shifted back to the centre as sGround does)
+    let edgeHit = false;                                                        // KSTAT HitEdge: any edge ray hit something this frame (a dropped hit counts too); sCheckClimbWall refuses a climb then
     const cast = (p0, p1, tag, off) => {
       const h = segHit(S, p0, p1); if (!h) return 0;
+      if (typeof tag === 'string' && tag !== 'fcenter') edgeHit = true;
       const d = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]], sl = Math.hypot(d[0], d[1], d[2]); if (sl < 1e-9) return 0;
       const n = h.n, wall = n[1] <= WALL_NY;                                   // up component at or below cos(WallAngle x 90): a wall (A143)
       if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return 2;   // ground seen by the upper edge rays does not count
@@ -293,14 +314,47 @@
       }
     } else if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
     // distort rays: centre to each distort point (A148: fixed 1 to 18, fluid 19 to 24, the free point 0)
-    if (dist) { const pts = opt.pts || distortPoints(S, R, pos, opt.speed !== undefined ? opt.speed : mlen, !!opt.climbing); for (const q of pts) cast([pos[0], pos[1], pos[2]], q.p, q.i); }
+    const ptsAll = dist ? (opt.pts || distortPoints(S, R, pos, opt.speed !== undefined ? opt.speed : mlen, !!opt.climbing)) : null;
+    if (dist) for (const q of ptsAll) cast([pos[0], pos[1], pos[2]], q.p, q.i);
+    // solid objects (too big to pick up: Mono::gYm_MonoHitCheck "treated as background", then sCheckHitMap): the same kinds of ray against the box. Walk case: the five edge rays reach 0.5 R ahead
+    // (the map's reach 0.15 R) and the loop ends at the first hit that is not dropped; fast case: the five swept rays from the old position to the new one plus R, same end; if a fast ray hit, the distort rays are skipped for that object
+    const monos = new Set();
+    if (S.ray && opt.objs !== false) {
+      const dm = S.diam * 10;
+      for (const o of S.objs) {
+        if (o.state !== 'map' || o.catchMm <= dm) continue;
+        if (Math.hypot(o.pos[0] - pos[0], o.pos[1] - pos[1], o.pos[2] - pos[2]) - mlen > R + o.maxlen) continue;   // m_dist = distance - k_dist; dist = R + f32Radius of the object
+        const co = (p0, p1, tag, off) => {
+          const h = boxSeg(o, p0, p1); if (!h) return 0;
+          if (typeof tag === 'string' && tag !== 'fcenter') edgeHit = true;
+          const d = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]], sl = Math.hypot(d[0], d[1], d[2]); if (sl < 1e-9) return 0;
+          const n = h.n, wall = n[1] <= WALL_NY; monos.add(o);
+          if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return 2;
+          const inner = (n[0]*d[0] + n[1]*d[1] + n[2]*d[2]) / sl, k = inner * sl * (1 - h.r - 0.0005), of = off || [0, 0, 0];
+          reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, -1, d, [p0[0] + d[0]*h.r - of[0], p0[1] + d[1]*h.r - of[1], p0[2] + d[2]*h.r - of[2]], o);
+          return 1;
+        };
+        let ret = 0;
+        if (fast) {
+          const rm = [mv[0]/mlen*R, mv[1]/mlen*R, mv[2]/mlen*R], b0 = [pos[0]+rm[0], pos[1]+rm[1], pos[2]+rm[2]];
+          for (const [tag, off] of [['fcenter', [0, 0, 0]], ['top', upv], ['left', left], ['right', right], ['bottom', [0, -R, 0]]]) {
+            const hit = co([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [b0[0]+off[0], b0[1]+off[1], b0[2]+off[2]], tag, off);
+            if (hit) { ret = 1; fastHit = true; } if (hit === 1) break;
+          }
+        } else if (mlen > 1e-6 && opt.edges !== false) {
+          const rm5 = [mv[0]/mlen*R*0.5, mv[1]/mlen*R*0.5, mv[2]/mlen*R*0.5];
+          for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) if (co([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [pos[0]+rm5[0]+off[0], pos[1]+rm5[1]+off[1], pos[2]+rm5[2]+off[2]], tag, off) === 1) break;
+        }
+        if (!ret && dist) for (const q of ptsAll) co([pos[0], pos[1], pos[2]], q.p, q.i);
+      }
+    }
     // per axis: the largest positive plus the largest negative adjustment (sGetAdjustGround / sGetAdjustWall)
     const sum = L => { const a = [0, 0, 0], b = [0, 0, 0]; for (const h of L) for (let k = 0; k < 3; k++) { const v = h.adj[k]; if (v < 0) { if (b[k] > v) b[k] = v; } else if (v > 0) { if (a[k] < v) a[k] = v; } } const r = [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; return r.map(v => Math.abs(v) < 1e-4 ? 0 : v); };
     const adjG = sum(lists[0]), adjW = sum(lists[1]); let wn = [0, 0, 0]; for (const h of lists[1]) { wn[0] += h.n[0]; wn[1] += h.n[1]; wn[2] += h.n[2]; }
     // sAdjustPosi: the wall part only counts when the flat move runs along or into the wall (inner <= 0.01)
     let useWall = false; if (lists[1].length) { const mh = Math.hypot(mv[0], mv[2]), wh = Math.hypot(wn[0], wn[2]); if (mh < 1e-9 || wh < 1e-9) useWall = !!opt.stop || mh < 1e-9; else useWall = !!opt.stop || (mv[0]*wn[0] + mv[2]*wn[2]) / (mh * wh) <= 0.01; }
     const total = [adjG[0] + (useWall ? adjW[0] : 0), adjG[1] + (useWall ? adjW[1] : 0), adjG[2] + (useWall ? adjW[2] : 0)];
-    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total, pts: opt.pts || null, fast, fastHit };
+    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total, pts: opt.pts || null, fast, fastHit, edge: edgeHit, monos: [...monos] };
   }
 
   // ---- state ----
@@ -552,13 +606,19 @@
     if (nrm) { nx = nrm[0]; ny = nrm[1]; nz = nrm[2]; }                         // ray mode: the ground normal comes from the hit list (A147)
     else { const x = S.pos[0], z = S.pos[2], hAt = (px, pz) => { const h = supportAt(S, px, pz, sup + 3, sup + 3); return h === null ? sup : h; };
       nx = -(hAt(x + 1, z) - hAt(x - 1, z)) / 2; nz = -(hAt(x, z + 1) - hAt(x, z - 1)) / 2; const nl = Math.hypot(nx, 1, nz); nx /= nl; nz /= nl; ny = 1 / nl; }
+    const wallHit = !!(S.ray && S.hitWallN);                                    // KSTAT HitWall: the wall normal joins the ground normal (fvWall = normalize(vGroundNorm + fvWallNorm))
+    if (wallHit) { nx += S.hitWallN[0]; ny += S.hitWallN[1]; nz += S.hitWallN[2]; const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl; }
     const d = [T[0] / V, T[1] / V, T[2] / V], inner = d[0] * nx + d[1] * ny + d[2] * nz; if (inner >= 0) return;
     const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2); if (refp <= 0) return;
     const r = [d[0] - 2 * inner * nx, d[1] - 2 * inner * ny, d[2] - 2 * inner * nz];
-    S.reflV = [r[0] * 0.95 * V, r[2] * 0.95 * V]; S.reflVy = r[1] * REFL * V;
+    const half = S.forceReflect && wallHit ? 0.5 : 1;                            // sw_force_sub_spd: forced reflection with a wall hit halves f32Velocity first
+    if (wallHit) { S.reflV = [r[0] * REFL * V * half, r[2] * REFL * V * half]; S.reflVy = r[1] * REFL * V * half; }   // a wall hit takes the wall branch: f32Reflection x f32Velocity on all three axes
+    else { S.reflV = [r[0] * 0.95 * V, r[2] * 0.95 * V]; S.reflVy = r[1] * REFL * V; }
     dashCancel(S);                                           // gYm_OujiDashCancel
-    const spd = Math.max(0, Math.min(1, (S.fallT - FALL_MIN) / (FALL_MAX - FALL_MIN)));       // sGetSpeedRatio, airborne and hit the ground
-    if (spd * refp > 0 && !S.forceReflect) crumbleHit(S, spd * refp, V, vmax);   // sReflection: ForceReflect without a wall hit turns the crumble off
+    // sGetSpeedRatio: a forced reflection uses the speed type (0 to 1 over a quarter of the top speed), otherwise the fall time
+    const spd = S.forceReflect ? Math.max(0, Math.min(1, (Math.min(1, V / vmax) - 0.25) / 0.25)) : Math.max(0, Math.min(1, (S.fallT - FALL_MIN) / (FALL_MAX - FALL_MIN)));
+    const crumbleOn = !(S.forceReflect && !wallHit) && !(S.fastHit && S.ib && S.ib.st);   // sw_crumble is off for ForceReflect without a wall hit; HitFast during a lump rock zeroes the power
+    if (spd * refp > 0 && crumbleOn) crumbleHit(S, spd * refp, V, vmax);
     S.events.push({ type: 'bounce', v: S.reflVy, fall: T[1] });
   }
   function crumbleHit(S, total, vIn, vmax) {                 // gYm_MonoCrumble
@@ -791,14 +851,9 @@
       else { vx *= 0.3; vz *= 0.3; addBlock(dx, 0); addBlock(0, dz); }
       moved = Math.hypot(mx, mz);
     }
-    // solid objects: anything too big to pick up is a box (P8). Low ones are rolled over (P9)
+    // solid objects: anything too big to pick up is a box (P8). Low ones are rolled over (P9). Ray mode (A150): the ray hits against the boxes replace this push, the knock stays
     const diamMm = S.diam * 10;
-    for (const o of S.objs) {
-      if (o.state !== 'map' || o.catchMm <= diamMm) continue;
-      if (o.top <= bottom + climbW) continue;
-      if (Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) > R + o.maxlen) continue;
-      const bc = boxClosest(o, S.pos); if (bc.dist >= R || bc.dist < 1e-6) continue;
-      const nx = S.pos[0] - bc.p[0], nz = S.pos[2] - bc.p[2], hl = Math.hypot(nx, nz); if (hl < 1e-6) continue;
+    const knock = o => {
       if (o.path && o.ppos) {                                                     // sMovingMono: a moving object that runs into the ball knocks it along its move direction (A100)
         const mvx = o.pos[0] - o.ppos[0], mvz = o.pos[2] - o.ppos[2], ml = Math.hypot(mvx, mvz);
         if (ml > 1e-9) {
@@ -809,6 +864,15 @@
           }
         }
       }
+    };   // sMovingMono (A100); in ray mode it runs for the objects whose box a ray hit
+    for (const o of S.objs) {
+      if (S.ray) break;
+      if (o.state !== 'map' || o.catchMm <= diamMm) continue;
+      if (o.top <= bottom + climbW) continue;
+      if (Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) > R + o.maxlen) continue;
+      const bc = boxClosest(o, S.pos); if (bc.dist >= R || bc.dist < 1e-6) continue;
+      const nx = S.pos[0] - bc.p[0], nz = S.pos[2] - bc.p[2], hl = Math.hypot(nx, nz); if (hl < 1e-6) continue;
+      knock(o);
       const push = (R - bc.dist) / bc.dist, px = S.pos[0] + (S.pos[0] - bc.p[0]) * push, pz = S.pos[2] + (S.pos[2] - bc.p[2]) * push;
       if (ok(px, pz)) { S.pos[0] = px; S.pos[2] = pz; const ux = nx / hl, uz = nz / hl; addWall(ux, uz, o); const vn = vx * ux + vz * uz; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, ux, uz, vIn, vmax)); vx -= vn * ux; vz -= vn * uz; } }
     }
@@ -829,13 +893,15 @@
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.lastRay = { c, old: oldP };
+      for (const o of c.monos) knock(o);                                              // a moving object whose box a ray hit knocks the ball along (sMovingMono)
       { const nh = c.ground.length + c.wall.length; if (nh > (S.maxHits || 0)) S.maxHits = nh; S.hitHist = S.hitHist || []; S.hitHist[nh] = (S.hitHist[nh] || 0) + 1; }   // diagnostic: hits per frame, for the _MAX_HITINFO question (A146)
-      S.forceReflect = c.fastHit; if (c.fast) S.fastFrames = (S.fastFrames || 0) + 1;   // KSTAT ForceReflect / HitFast: a hit by the swept fast rays forces the reflection (no NonReflectFlyTime skip) and, with ground only, no crumble
+      S.forceReflect = c.fastHit; S.fastHit = c.fastHit; S.edgeHit = c.edge; { let wx = 0, wy = 0, wz = 0; for (const h of c.wall) { wx += h.n[0]; wy += h.n[1]; wz += h.n[2]; } const wl = Math.hypot(wx, wy, wz); S.hitWallN = wl > 1e-9 ? [wx / wl, wy / wl, wz / wl] : null; }   // fvWallNorm of this frame (null: no wall hit, KSTAT HitWall off)
+      if (c.fast) S.fastFrames = (S.fastFrames || 0) + 1;   // KSTAT ForceReflect / HitFast: a hit by the swept fast rays forces the reflection (no NonReflectFlyTime skip) and, with ground only, no crumble
       S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
       const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
       let boxG = false;
-      const supO = supportAt(S, S.pos[0], S.pos[2], 0, S.pos[1] - R + climbW + Math.max(0, -S.vy), true);   // boxes (objects too big to pick up) are still support, not part of the hit data
+      const supO = null;                                                              // objects too big to pick up are part of the ray hits now (A150): their tops come back as ground hits
       if (supO !== null && S.pos[1] - R <= supO) { if (S.vy < 0 && !S.grounded && !hitG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, supO, [0, 1, 0]); S.pos[1] = supO + R; S.vy = 0; boxG = true; }
       if (hitG && S.vy < 0) { if (!S.grounded && !boxG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, 0, S.gNorm); S.vy = 0; }
       S.grounded = !cw.on && (hitG || boxG); S.rampLift = hitG && !c.ground.some(h => h.n[1] > 0.9999);
@@ -867,9 +933,9 @@
       for (const h of c.wall) {
         const hl = Math.hypot(h.n[0], h.n[2]); if (hl < 0.3) continue;                 // ceilings and undersides do not count as wall faces for the climb and hold rules (A143)
         const nx = h.n[0] / hl, nz = h.n[2] / hl;
-        if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[h.pt])) noClimb = true;
-        { const T3 = S.hit.tris, o3 = h.pt * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); }
-        addWall(nx, nz, null); const vn = vx * nx + vz * nz;
+        if (!h.mono && S.hit.kind && S.noClimbKinds.has(S.hit.kind[h.pt])) noClimb = true;
+        if (h.mono) meshTop = Math.max(meshTop, h.mono.top); else { const T3 = S.hit.tris, o3 = h.pt * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); }
+        addWall(nx, nz, h.mono || null); const vn = vx * nx + vz * nz;
         if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, nx, nz, vIn, vmax)); vx -= vn * nx; vz -= vn * nz; }
       }
     } else for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[n[2]])) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
@@ -887,7 +953,8 @@
       if (walls.length === 1) {                                                        // more than one wall face at once: no climb
         const w = walls[0], free = !!(w.o && w.o.top <= bottom + CW.distRatio * S.diam && S.grounded);   // sCheckClimbMono: the object's top is within reach
         let can = cw.on || free;
-        if (!can) can = S.grounded && cw.forbid === 0 && !S.rampLift;                  // not forbidden, not flying, not on a slope (HitEdge is not modelled)
+        if (!can) can = S.grounded && cw.forbid === 0 && !S.rampLift;                  // not forbidden, not flying, not on a slope (HitEdge: below, ray mode only)
+        if (S.ray && S.edgeHit && !free) can = false;                                   // sCheckClimbWall: KSTAT HitEdge (an edge ray hit something) refuses the climb unless the object is small enough to climb (sCheckClimbMono)
         if (noClimb && !free) can = false;                                              // DisableClimb: only a mono small enough to climb (sCheckClimbMono) still gets through
         if (can) {
           const hx = -w.n[0], hz = -w.n[1], camCos = fx * hx + fz * hz;                 // camera forward against the direction to the wall (camera = prince facing, A98)
@@ -898,7 +965,11 @@
         }
         if (ok1 && !cw.on) { cw.speed = 0; cw.top = false; cw.norm = w.n.slice(); cw.len = S.ray && S.lastRay ? Math.max(R, ...S.lastRay.c.wall.map(h => Math.hypot(h.vec[0], h.vec[1], h.vec[2]))) : R; cw.startY = S.pos[1]; }
       }
-      if (!ok1 && cw.on && !cw.top && walls.length === 0 && dir !== 0 && S.pos[1] - R < cw.wallTop) ok1 = true;   // a sphere rising past a wall loses contact before its bottom clears the top (the engine tests several directions around the ball, so the contact lasts); keep climbing until the bottom is over the top (P19)
+      if (S.ray && !ok1 && cw.on && walls.length === 0 && S.lastRay && S.lastRay.c.ground.length > 0 && dir !== 0 && !S.edgeHit) {   // sReaction runs sReflection on any hit, and with ClimbWall on sCheckClimbWall needs no wall hit: the input still has to point into the climb wall (any ground hit, such as the top of a box the ball is rising past, keeps the climb going)
+        const pa2 = S.yaw + (st.mdir >= 0 ? st.phi : 0), mv = Math.sin(pa2) * cw.norm[0] + Math.cos(pa2) * cw.norm[1];
+        if (-mv >= CW.angleCos) ok1 = true;
+      }
+      if (!S.ray && !ok1 && cw.on && !cw.top && walls.length === 0 && dir !== 0 && S.pos[1] - R < cw.wallTop) ok1 = true;   // a sphere rising past a wall loses contact before its bottom clears the top (the engine tests several directions around the ball, so the contact lasts); keep climbing until the bottom is over the top (P19)
       if (ok1 && !cw.on && walls.length === 1) cw.wallTop = walls[0].o ? walls[0].o.top : meshTop;
       if (ok1) { if (!cw.top) cw.eff = 1; cw.forbid = 0; cw.on = true; }
       else cwOff();
@@ -925,7 +996,8 @@
         if (inner < 0) {
           const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2);
           if (refp > 0) {
-            S.reflV = [(ux - 2 * inner * nx) * REFL * vIn, (uz - 2 * inner * nz) * REFL * vIn];
+            const hv = S.ray && S.forceReflect ? 0.5 : 1;                             // sw_force_sub_spd: a forced reflection with walls halves the speed first
+            S.reflV = [(ux - 2 * inner * nx) * REFL * vIn * hv, (uz - 2 * inner * nz) * REFL * vIn * hv];
             dashCancel(S);                                  // gYm_OujiDashCancel: the dash needs new strokes
             if (Math.min(1, vIn / vmax) > 0.3 && refp > 0.3 && !(S.crushCool > 0)) { S.events.push({ type: 'crush', wall: true }); S.crushCool = 8; }   // my 8 frame gap so a ball ground against a wall does not stutter the sound   // reqCrush when speed ratio and angle power both pass 0.3
           }
