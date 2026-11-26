@@ -810,6 +810,7 @@
       } else { const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy; }
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
+      S.lastRay = { c, old: oldP };
       S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
       let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
       const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
@@ -854,7 +855,11 @@
     } else for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[n[2]])) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
     const crumbled0 = S.crumbled;
     if (hitPow > 0 && !cw.on && !cwWasOn) crumbleHit(S, hitPow, vIn, vmax);   // sMonoCrumble does nothing while climbing
-    holdInWall(S, walls, crumbled0);
+    const wasHold = S.holdIn; holdInWall(S, walls, crumbled0);
+    if (S.ray && S.holdIn && S.lastRay) {                                              // sAdjustPosi, HoldInWall: the flat move is taken back (position = old position - correction) and on the first held frame the move becomes the wall normal x 0.05 x top speed (A142)
+      const { c, old } = S.lastRay; S.pos[0] = old[0] - c.total[0]; S.pos[2] = old[2] - c.total[2];
+      if (!wasHold) { let wx = 0, wy = 0, wz = 0; for (const h of c.wall) { wx += h.n[0]; wy += h.n[1]; wz += h.n[2]; } const wl = Math.hypot(wx, wy, wz) || 1; vx = wx / wl * tp.speed * 0.05; vz = wz / wl * tp.speed * 0.05; }
+    }
     S.v[0] = vx; S.v[1] = vz; S.speed = Math.hypot(vx, vz); if (S.rampLift) S.vy = Math.max(S.vy, 0);
     // wall climb: sCheckClimbWall decides, sEnableClimbWall / DisableClimbWall change state, sClimbWall lifts the ball
     {
