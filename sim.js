@@ -99,6 +99,16 @@
     const va = d3*d6-d5*d4; if (va <= 0 && (d4-d3) >= 0 && (d5-d6) >= 0) { const w = (d4-d3)/((d4-d3)+(d5-d6)); return [bx+w*(cx-bx), by+w*(cy-by), bz+w*(cz-bz)]; }
     const dn = 1/(va+vb+vc), v = vb*dn, w = vc*dn; return [ax+abx*v+acx*w, ay+aby*v+acy*w, az+abz*v+acz*w];
   }
+  // ---- buried objects (A123, INFERRED from FUN_000130cc and FUN_00013028): once an object's far edge (centre distance + bounding radius) is inside a threshold it is taken off the ball's list of stuck objects and never drawn, tested or shed again.
+  // threshold = display radius (R * DispScaleRatio 0.38) while 90 or fewer objects are stuck; beyond that it eases toward R by min(1, (n - 90) / 70) * 0.8. The 90, 70 and 0.8 are literals in the binary; what n counts is my reading (stuck objects, buried ones included) ----
+  function cullStuck(S, R) {
+    if (S.noCull || !S.attached.length) return;
+    const n = S.attached.length + S.buried, lo = R * 0.38; let thr = lo; if (n > 90) thr += (R - lo) * Math.min(1, (n - 90) / 70) * 0.8;
+    for (let i = S.attached.length - 1; i >= 0; i--) {
+      const o = S.attached[i]; if (Math.hypot(o.lpos[0], o.lpos[1], o.lpos[2]) + o.maxlen >= thr) continue;
+      S.attached.splice(i, 1); o.state = 'buried'; S.buried++; const k = S.ibiList.indexOf(o); if (k >= 0) S.ibiList.splice(k, 1);
+    }
+  }
   // ---- water (A139): the map's HIT_WAT layer (8 stages). In the engine (Katamari::sWater, KatamariHit.cppi) it is only a trigger: a vertical test line from 10 diameters above the ball to one radius below its centre; where it
   // crosses a water polygon the ball is "in water", which makes a ripple every 8 frames (KATA_RIPPLE_WAIT, the reset value in FUN_0001f4dc) and, on the first contact while flying, the splash sound (id 28). There is no collision, drag or speed change ----
   const RIPPLE_WAIT = 8;
@@ -196,7 +206,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -732,6 +742,7 @@
       const add = o.boxvol * o.addRatio * addRatio(S); o.addVol = add; o.crumbleVol = add; if (!o.rotHome) o.rotHome = o.rot; grow(S, add);
       S.events.push({ type: 'pickup', name: o.n, add }); if (S.target && o.n === S.target && !S.won) { S.won = true; S.events.push({ type: 'won' }); }
     }
+    cullStuck(S, R);
     // object layers (MP_INF): layer 0 is live until the ball reaches its 'until' diameter, then the next area opens (P21: the whole mechanism is inferred)
     const LY = S.layers; if (LY && S.layer + 1 < LY.length && LY[S.layer].until > 0 && S.diam >= LY[S.layer].until) {
       const from = S.layer; S.layer++;
@@ -745,6 +756,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
