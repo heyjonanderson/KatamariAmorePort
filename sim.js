@@ -201,6 +201,32 @@
     return best;
   }
 
+  // Ray stage 1 (A145): the engine's segment test against the collision polygons (gYm_MapHitCheck_Ground / HITSYS, A134).
+  // A polygon counts only when the segment starts on its front side and ends behind it (or on it). Returns the nearest hit
+  // { t: triangle, r: ratio along p0 to p1 in 0..1, n: front side unit normal (y up) } or null. Uses the same grid as hitWalls.
+  function segHit(S, p0, p1) {
+    const H = S.hit; if (!H) return null; const T = H.tris, dx = p1[0]-p0[0], dy = p1[1]-p0[1], dz = p1[2]-p0[2];
+    const x0 = Math.min(p0[0], p1[0]), x1 = Math.max(p0[0], p1[0]), z0 = Math.min(p0[2], p1[2]), z1 = Math.max(p0[2], p1[2]);
+    const seen = new Set(); let best = null;
+    const test = t => {
+      if (seen.has(t)) return; seen.add(t); if (S.erased && H.kind && S.erased[H.kind[t]]) return;
+      const o = t * 9, e1x = T[o+3]-T[o], e1y = T[o+4]-T[o+1], e1z = T[o+5]-T[o+2], e2x = T[o+6]-T[o], e2y = T[o+7]-T[o+1], e2z = T[o+8]-T[o+2];
+      const cx = e1y*e2z-e1z*e2y, cy = e1z*e2x-e1x*e2z, cz = e1x*e2y-e1y*e2x, cl = Math.hypot(cx, cy, cz); if (cl < 1e-12) return;
+      // front side is the negative side of cross(e1, e2) in this z-mirrored data
+      const s0 = -(cx*(p0[0]-T[o]) + cy*(p0[1]-T[o+1]) + cz*(p0[2]-T[o+2])) / cl, s1 = -(cx*(p1[0]-T[o]) + cy*(p1[1]-T[o+1]) + cz*(p1[2]-T[o+2])) / cl;
+      if (s0 < 0 || s1 > 0 || s0 === s1) return;
+      const r = s0 / (s0 - s1); if (best && r >= best.r) return;
+      const hx = p0[0]+dx*r-T[o], hy = p0[1]+dy*r-T[o+1], hz = p0[2]+dz*r-T[o+2];
+      // inside test by barycentric coordinates in the polygon plane
+      const d00 = e1x*e1x+e1y*e1y+e1z*e1z, d01 = e1x*e2x+e1y*e2y+e1z*e2z, d11 = e2x*e2x+e2y*e2y+e2z*e2z, d20 = hx*e1x+hy*e1y+hz*e1z, d21 = hx*e2x+hy*e2y+hz*e2z, den = d00*d11-d01*d01; if (Math.abs(den) < 1e-18) return;
+      const v = (d11*d20-d01*d21)/den, w = (d00*d21-d01*d20)/den; if (v < -1e-6 || w < -1e-6 || v + w > 1 + 1e-6) return;
+      best = { t, r, n: [-cx/cl, -cy/cl, -cz/cl] };
+    };
+    for (let cx = Math.floor(x0 / GRID); cx <= Math.floor(x1 / GRID); cx++) for (let cz = Math.floor(z0 / GRID); cz <= Math.floor(z1 / GRID); cz++) { const a = H.cells.get(cx * 100003 + cz); if (a) for (const t of a) test(t); }
+    for (const t of H.big) test(t);
+    return best;
+  }
+
   // ---- state ----
   function create(play, opts) {
     opts = opts || {};
@@ -802,6 +828,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
