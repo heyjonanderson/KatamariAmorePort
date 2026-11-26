@@ -256,7 +256,8 @@
     if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
     // distort rays: centre to each point (point 0 straight down, then the 18 fixed points of the table, rotated and scaled with the ball)
     if (dist) {
-      cast([pos[0], pos[1], pos[2]], [pos[0], pos[1] - R, pos[2]], 'd0');
+      const gn = S.grounded && S.gNorm ? S.gNorm : up;                                  // sRoll: point 0 is -groundNormal x R on the ground, straight down when flying
+      cast([pos[0], pos[1], pos[2]], [pos[0] - gn[0] * R, pos[1] - gn[1] * R, pos[2] - gn[2] * R], 'd0');
       if (IBI18) { const sc = R / 50; IBI18.forEach((q, i) => { const o = mvec(S.R, [q[0] * sc, -q[1] * sc, -q[2] * sc]); cast([pos[0], pos[1], pos[2]], [pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]], 'd' + (i + 1)); }); }
     }
     // per axis: the largest positive plus the largest negative adjustment (sGetAdjustGround / sGetAdjustWall)
@@ -280,7 +281,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      noCeil: !!opts.noCeil, ceilHit: false, holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      noCeil: !!opts.noCeil, ceilHit: false, ray: opts.ray !== undefined ? !!opts.ray : (typeof process !== 'undefined' && !!process.env && process.env.KRAY === '1'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -355,8 +356,8 @@
   }
   // Support height under (x, z): map floor, or the top of a too-big object the ball can roll up onto (P19: climb limit CLIMB * radius).
   // yMapMax / yObjMax are the highest surface heights the ball may step onto from where it is.
-  function supportAt(S, x, z, yMapMax, yObjMax) {
-    let g = groundAt(S.G, x, z, yMapMax); const dm = S.diam * 10;
+  function supportAt(S, x, z, yMapMax, yObjMax, noMap) {
+    let g = noMap ? null : groundAt(S.G, x, z, yMapMax); const dm = S.diam * 10;
     for (const o of S.objs) {
       if (o.state !== 'map' || o.catchMm <= dm || o.top > yObjMax || (g !== null && o.top <= g)) continue;
       if (Math.abs(x - o.pos[0]) > o.maxlen || Math.abs(z - o.pos[2]) > o.maxlen) continue;
@@ -504,11 +505,13 @@
   // Landing bounce (KatamariHit sReflection, airborne branch, A107). The ball's total move this frame (ground move plus gravity) is mirrored off the ground normal and comes back next frame:
   // sideways x 0.95, up x f32Reflection (0.55), all times the speed. Not at all if the flight was under NonReflectFlyTime (5 frames), which also kills small bounces. A hard fall also shakes objects off (power from FlyFallTime)
   const FLY_MIN = 5, FALL_MIN = 9, FALL_MAX = 70;     // s32NonReflectFlyTime, s32FlyReflectMinTime, s32FlyReflectMaxTime (kparam.json)
-  function landingBounce(S, vmax, sup) {
+  function landingBounce(S, vmax, sup, nrm) {
     if (S.flyT < FLY_MIN) return;
     const T = [S.v[0], S.vy, S.v[1]], V = Math.hypot(T[0], T[1], T[2]); if (V < 1e-6) return;
-    const x = S.pos[0], z = S.pos[2], hAt = (px, pz) => { const h = supportAt(S, px, pz, sup + 3, sup + 3); return h === null ? sup : h; };
-    let nx = -(hAt(x + 1, z) - hAt(x - 1, z)) / 2, nz = -(hAt(x, z + 1) - hAt(x, z - 1)) / 2; const nl = Math.hypot(nx, 1, nz); nx /= nl; nz /= nl; const ny = 1 / nl;
+    let nx, ny, nz;
+    if (nrm) { nx = nrm[0]; ny = nrm[1]; nz = nrm[2]; }                         // ray mode: the ground normal comes from the hit list (A147)
+    else { const x = S.pos[0], z = S.pos[2], hAt = (px, pz) => { const h = supportAt(S, px, pz, sup + 3, sup + 3); return h === null ? sup : h; };
+      nx = -(hAt(x + 1, z) - hAt(x - 1, z)) / 2; nz = -(hAt(x, z + 1) - hAt(x, z - 1)) / 2; const nl = Math.hypot(nx, 1, nz); nx /= nl; nz /= nl; ny = 1 / nl; }
     const d = [T[0] / V, T[1] / V, T[2] / V], inner = d[0] * nx + d[1] * ny + d[2] * nz; if (inner >= 0) return;
     const refp = (Math.acos(Math.max(-1, inner)) - Math.PI / 2) / (Math.PI / 2); if (refp <= 0) return;
     const r = [d[0] - 2 * inner * nx, d[1] - 2 * inner * ny, d[2] - 2 * inner * nz];
@@ -720,7 +723,8 @@
     if (Math.hypot(vx, vz) < 1e-3) { vx = 0; vz = 0; }
     const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed; let hitPow = 0;   // incoming velocity, for crumble
     const bottom = S.pos[1] - R;
-    const ok = (x, z) => supportAt(S, x, z, bottom + stepW, bottom + climbW) !== null;
+    const oldP = S.pos.slice();                                                        // position at the start of the frame (old position of the ray segments)
+    const ok = S.ray ? () => true : (x, z) => supportAt(S, x, z, bottom + stepW, bottom + climbW) !== null;   // ray mode (A147): the move is free, the rays correct it
     let dx = vx, dz = vz, moved = 0, mx = 0, mz = 0;
     if (cw.on && cw.top) { dx = 0; dz = 0; }                                          // at the top the move is not added (sControl)
     // wall contacts this step, one entry per distinct normal (u16HitCount[1] counts wall faces; A98: flat walls made of many triangles count once)
@@ -768,7 +772,28 @@
     // walls from the collision mesh
     let noClimb = false;                                                              // HIT_ATTR_DISABLE_CLIMB: a hit polygon with this attribute turns the wall climb off for the frame (sAttribute, KatamariHit.cppi); the attribute value is taken to be kind 2 (P17b)
     let meshTop = -1e9;
-    for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[n[2]])) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
+    if (S.ray) {
+      // ray mode (A147): the whole frame's move, then the engine's rays (sGround), then sAdjustPosi
+      if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }   // sStatFly bookkeeping on last frame's state
+      const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy;
+      const c = rayContacts(S, R, oldP, { stop: false });
+      S.pos[0] -= c.total[0]; S.pos[1] -= c.total[1]; S.pos[2] -= c.total[2];
+      let gx = 0, gy = 0, gz = 0; for (const h of c.ground) { gx += h.n[0]; gy += h.n[1]; gz += h.n[2]; }
+      const gl = Math.hypot(gx, gy, gz), hitG = c.ground.length > 0 && !cw.on; if (gl > 1e-9) S.gNorm = [gx / gl, gy / gl, gz / gl];
+      let boxG = false;
+      const supO = supportAt(S, S.pos[0], S.pos[2], 0, S.pos[1] - R + climbW + Math.max(0, -S.vy), true);   // boxes (objects too big to pick up) are still support, not part of the hit data
+      if (supO !== null && S.pos[1] - R <= supO) { if (S.vy < 0 && !S.grounded && !hitG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, supO, [0, 1, 0]); S.pos[1] = supO + R; S.vy = 0; boxG = true; }
+      if (hitG && S.vy < 0) { if (!S.grounded && !boxG && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, 0, S.gNorm); S.vy = 0; }
+      S.grounded = !cw.on && (hitG || boxG); S.rampLift = hitG && !c.ground.some(h => h.n[1] > 0.9999);
+      for (const h of c.wall) {
+        const hl = Math.hypot(h.n[0], h.n[2]); if (hl < 0.3) continue;                 // ceilings and undersides do not count as wall faces for the climb and hold rules (A143)
+        const nx = h.n[0] / hl, nz = h.n[2] / hl;
+        if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[h.pt])) noClimb = true;
+        { const T3 = S.hit.tris, o3 = h.pt * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); }
+        addWall(nx, nz, null); const vn = vx * nx + vz * nz;
+        if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, nx, nz, vIn, vmax)); vx -= vn * nx; vz -= vn * nz; }
+      }
+    } else for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[n[2]])) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
     const crumbled0 = S.crumbled;
     if (hitPow > 0 && !cw.on && !cwWasOn) crumbleHit(S, hitPow, vIn, vmax);   // sMonoCrumble does nothing while climbing
     holdInWall(S, walls, crumbled0);
@@ -824,14 +849,16 @@
       }
     }
     // vertical. Flight bookkeeping is sStatFly: FlyTime counts frames in the air, FlyFallTime the frames moving down
-    if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }
-    const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g;
-    let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepW + Math.max(0, -S.vy), y - R + climbW + Math.max(0, -S.vy));
-    if (sup !== null && y - R <= sup) {
-      if (S.vy < 0 && !S.grounded && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, sup);   // landing from the air (sReflection, Fly branch, A107)
-      y = sup + R; S.vy = 0;
+    if (!S.ray) {
+      if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }
+      const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g;
+      let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepW + Math.max(0, -S.vy), y - R + climbW + Math.max(0, -S.vy));
+      if (sup !== null && y - R <= sup) {
+        if (S.vy < 0 && !S.grounded && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, sup);   // landing from the air (sReflection, Fly branch, A107)
+        y = sup + R; S.vy = 0;
+      }
+      S.pos[1] = y; S.grounded = !cw.on && sup !== null && Math.abs(y - R - sup) < 1e-3;
     }
-    S.pos[1] = y; S.grounded = !cw.on && sup !== null && Math.abs(y - R - sup) < 1e-3;
     // roll: the surface moves with the ball, axis = up x motion
     if (moved > 1e-6) {
       const axis = norm([mz, 0, -mx]);
