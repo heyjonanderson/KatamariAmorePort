@@ -206,7 +206,7 @@
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
-      lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
+      holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
     S.diam = diamFromVol(S.volume);
     S.pickMode = opts.pick || 'engine'; S.noClimbKind = opts.noClimbKind === undefined ? 2 : opts.noClimbKind; S.noClimbKinds = new Set([S.noClimbKind].concat(opts.stopperClimb ? [] : (play.mis.stoppers || []).map(st => st[1])));   // the area walls named by ERASE_STOPPER cannot be climbed either: tester, stage 2 first slope (A126);   // 'sphere' brings back the old sphere-against-box pickup test for comparison (A29)
@@ -460,6 +460,43 @@
     }
     if (n) { S.crumbleCool = CR.cool; S.crumbled += n; S.events.push({ type: 'crumble', n }); }
   }
+  // sCheckHoldInWall (KatamariHit.cppi): the ball squeezed between walls sheds a little. 3 wall hits, or 2 walls more than 150 degrees apart, or opposing walls on three frames in a row
+  // (first and second 138 degrees or more apart, first and third within 5 degrees) count as held; each held frame sheds 0.008 of the crumble volume and one lump object (35% of the crumble volume off its own),
+  // and after 15 held frames in a row a 0.5 crumble if nothing else crumbled that frame. Not ported: the move nudge and the position adjust of sAdjustPosi (they need the engine's hit lists, A137), and mYm_MonoCheck_Crumble
+  const HOLD = { hist: 3, ang2: 150 * Math.PI / 180, angFace: 138 * Math.PI / 180, angSame: 5 * Math.PI / 180, time: 15, tiny: 0.008, half: 0.5, lump: 0.35 };
+  function holdInWall(S, walls, crumbledBefore) {
+    const h = S.holdHist; let wn = [0, 0];
+    for (const w of walls) { wn[0] += w.n[0]; wn[1] += w.n[1]; }
+    const wl = Math.hypot(wn[0], wn[1]); if (wl > 1e-9) wn = [wn[0] / wl, wn[1] / wl]; else wn = [0, 0];
+    h.unshift({ wc: walls.length, n: wn }); h.length = HOLD.hist;
+    const acos = v => Math.acos(Math.max(-1, Math.min(1, v)));
+    let count = false;
+    if (walls.length > 1) {
+      if (walls.length >= 3) { holdCrumble(S); count = true; }
+      else {
+        if (S.holdTime !== 0) count = true;
+        if (walls.length === 2 && acos(walls[0].n[0] * walls[1].n[0] + walls[0].n[1] * walls[1].n[1]) > HOLD.ang2) { holdCrumble(S); count = true; }
+      }
+    }
+    if (h[0] && h[1] && h[2] && h[0].wc && h[1].wc && h[2].wc) {
+      if (acos(h[0].n[0] * h[1].n[0] + h[0].n[1] * h[1].n[1]) >= HOLD.angFace && acos(h[0].n[0] * h[2].n[0] + h[0].n[1] * h[2].n[1]) < HOLD.angSame) { count = true; holdCrumble(S); }
+    }
+    if (!count) { S.holdTime = 0; S.holdIn = false; return; }
+    S.holdIn = true; S.holdTime++;
+    if (S.holdTime >= HOLD.time) {
+      if (S.crumbled === crumbledBefore) crumbleVol(S, HOLD.half * CR.vol * S.volume, HOLD.half);
+      S.holdTime = 1;
+    }
+  }
+  function holdCrumble(S) {                                  // sCrumbleHoldInWall
+    crumbleVol(S, HOLD.tiny * CR.vol * S.volume, HOLD.tiny);
+    for (let i = 0; i < S.ibiList.length; i++) {            // one lump object per call: gYm_MonoCrumbleForceMono(mc, 1.0, 0.35)
+      const o = S.ibiList[i]; if (S.holdSeen.has(o)) continue; S.holdSeen.add(o);
+      o.crumbleVol -= CR.vol * S.volume * HOLD.lump;
+      if (o.crumbleVol <= 0) { const k = S.attached.indexOf(o); if (k >= 0) { crumbleOne(S, k, 1.0); S.crumbled++; S.events.push({ type: 'crumble', n: 1 }); } }
+      break;
+    }
+  }
   function crumbleOne(S, i, power) {                         // sCrumbleOneMono: volume comes off, the object leaves the ball and is thrown away from the centre
     const o = S.attached[i]; S.attached.splice(i, 1);
     const k = S.ibiList.indexOf(o); if (k >= 0) S.ibiList.splice(k, 1);
@@ -658,7 +695,9 @@
     let noClimb = false;                                                              // HIT_ATTR_DISABLE_CLIMB: a hit polygon with this attribute turns the wall climb off for the frame (sAttribute, KatamariHit.cppi); the attribute value is taken to be kind 2 (P17b)
     let meshTop = -1e9;
     for (const n of hitWalls(S, R, false, cw.on ? 0.05 : undefined)) { if (S.hit.kind && S.noClimbKinds.has(S.hit.kind[n[2]])) noClimb = true; { const T3 = S.hit.tris, o3 = n[2] * 9; meshTop = Math.max(meshTop, T3[o3 + 1], T3[o3 + 4], T3[o3 + 7]); } addWall(n[0], n[1], null); const vn = vx * n[0] + vz * n[1]; if (vn < 0) { hitPow = Math.max(hitPow, impactPower(vx0, vz0, n[0], n[1], vIn, vmax)); vx -= vn * n[0]; vz -= vn * n[1]; } }
+    const crumbled0 = S.crumbled;
     if (hitPow > 0 && !cw.on && !cwWasOn) crumbleHit(S, hitPow, vIn, vmax);   // sMonoCrumble does nothing while climbing
+    holdInWall(S, walls, crumbled0);
     S.v[0] = vx; S.v[1] = vz; S.speed = Math.hypot(vx, vz); if (S.rampLift) S.vy = Math.max(S.vy, 0);
     // wall climb: sCheckClimbWall decides, sEnableClimbWall / DisableClimbWall change state, sClimbWall lifts the ball
     {
@@ -756,6 +795,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
