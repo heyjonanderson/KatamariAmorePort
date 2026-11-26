@@ -227,6 +227,47 @@
     return best;
   }
 
+  // Ray stage 2 (A146): the engine's ground and wall hit lists (Katamari::sGround, gYm_KatamariMakeLandformNormal, sRegistHitInfo, sGetHitInfo,
+  // sGetAdjustGround, sGetAdjustWall, sAdjustPosi). Output only: nothing in step() calls it yet. Returns the lists and the position correction.
+  // old = position at the start of the frame, S.pos = position now. The correction is subtracted from the position (as in sAdjustPosi).
+  const IBI18 = (() => { try { return require('./tools/ibitsu_sph18.json').points; } catch (e) { return null; } })();
+  function rayContacts(S, R, old, opt) {
+    opt = opt || {}; const pos = S.pos, lists = [[], []], dist = opt.dist !== false;
+    const mv = [pos[0]-old[0], pos[1]-old[1], pos[2]-old[2]], mlen = Math.hypot(mv[0], mv[1], mv[2]);
+    const up = [0, 1, 0];
+    const reg = (type, n, adj, r, len, tag, pt) => {
+      const L = lists[type]; for (const h of L) { if (n[0]*h.n[0] + n[1]*h.n[1] + n[2]*h.n[2] >= 0.99998) { if (Math.hypot(adj[0], adj[1], adj[2]) > h.len) { h.n = n; h.adj = adj; h.len = Math.hypot(adj[0], adj[1], adj[2]); h.r = r; h.tag = tag; h.pt = pt; } return; } }
+      L.push({ n, adj, len: Math.hypot(adj[0], adj[1], adj[2]), r, tag, pt });
+    };
+    const cast = (p0, p1, tag) => {
+      const h = segHit(S, p0, p1); if (!h) return;
+      const d = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]], sl = Math.hypot(d[0], d[1], d[2]); if (sl < 1e-9) return;
+      const n = h.n, wall = n[1] <= WALL_NY;                                   // up component at or below cos(WallAngle x 90): a wall (A143)
+      if (!wall && (tag === 'top' || tag === 'lefttop' || tag === 'righttop')) return;   // ground seen by the upper edge rays does not count
+      const inner = (n[0]*d[0] + n[1]*d[1] + n[2]*d[2]) / sl, k = inner * sl * (1 - h.r - 0.0005);
+      reg(wall ? 1 : 0, n, [n[0]*k, n[1]*k, n[2]*k], h.r, tag, h.t);
+    };
+    // edge rays (the walk case; the fast case is not ported): old position + offset to new position + 15% of the move + offset
+    const left = (() => { const h = Math.hypot(mv[0], mv[2]); const dx = h > 1e-9 ? mv[0]/h : 0, dz = h > 1e-9 ? mv[2]/h : 1; return [-dz * R, 0, dx * R]; })();   // rotY(-90) of the flat move direction (left and right are both used, so the sign does not matter)
+    const right = [-left[0], 0, -left[2]], upv = [0, R, 0];
+    const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l*R, v[1]/l*R, v[2]/l*R]; };
+    const lu = norm([left[0]+upv[0], left[1]+upv[1], left[2]+upv[2]]), ru = norm([right[0]+upv[0], right[1]+upv[1], right[2]+upv[2]]);
+    const tgt = [pos[0] + (mlen > 1e-9 ? mv[0]/mlen : 0) * R * 0.15, pos[1] + (mlen > 1e-9 ? mv[1]/mlen : 0) * R * 0.15, pos[2] + (mlen > 1e-9 ? mv[2]/mlen : 0) * R * 0.15];
+    if (mlen > 1e-6 && opt.edges !== false) for (const [tag, off] of [['top', upv], ['left', left], ['right', right], ['lefttop', lu], ['righttop', ru]]) cast([old[0]+off[0], old[1]+off[1], old[2]+off[2]], [tgt[0]+off[0], tgt[1]+off[1], tgt[2]+off[2]], tag);
+    // distort rays: centre to each point (point 0 straight down, then the 18 fixed points of the table, rotated and scaled with the ball)
+    if (dist) {
+      cast([pos[0], pos[1], pos[2]], [pos[0], pos[1] - R, pos[2]], 'd0');
+      if (IBI18) { const sc = R / 50; IBI18.forEach((q, i) => { const o = mvec(S.R, [q[0] * sc, -q[1] * sc, -q[2] * sc]); cast([pos[0], pos[1], pos[2]], [pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]], 'd' + (i + 1)); }); }
+    }
+    // per axis: the largest positive plus the largest negative adjustment (sGetAdjustGround / sGetAdjustWall)
+    const sum = L => { const a = [0, 0, 0], b = [0, 0, 0]; for (const h of L) for (let k = 0; k < 3; k++) { const v = h.adj[k]; if (v < 0) { if (b[k] > v) b[k] = v; } else if (v > 0) { if (a[k] < v) a[k] = v; } } const r = [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; return r.map(v => Math.abs(v) < 1e-4 ? 0 : v); };
+    const adjG = sum(lists[0]), adjW = sum(lists[1]); let wn = [0, 0, 0]; for (const h of lists[1]) { wn[0] += h.n[0]; wn[1] += h.n[1]; wn[2] += h.n[2]; }
+    // sAdjustPosi: the wall part only counts when the flat move runs along or into the wall (inner <= 0.01)
+    let useWall = false; if (lists[1].length) { const mh = Math.hypot(mv[0], mv[2]), wh = Math.hypot(wn[0], wn[2]); if (mh < 1e-9 || wh < 1e-9) useWall = !!opt.stop || mh < 1e-9; else useWall = !!opt.stop || (mv[0]*wn[0] + mv[2]*wn[2]) / (mh * wh) <= 0.01; }
+    const total = [adjG[0] + (useWall ? adjW[0] : 0), adjG[1] + (useWall ? adjW[1] : 0), adjG[2] + (useWall ? adjW[2] : 0)];
+    return { ground: lists[0], wall: lists[1], adjG, adjW, useWall, total };
+  }
+
   // ---- state ----
   function create(play, opts) {
     opts = opts || {};
@@ -828,6 +869,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

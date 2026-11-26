@@ -30,14 +30,14 @@ Lump lengths from the last 12 attached objects with tips (max 6), a lift of the 
 ## Stages
 
 1. **Segment test (done, A145: `K.segHit`, tests/seg.js).** Add `rayPoly(S, p0, p1)`: segment against the hit polygons, one sided, giving the nearest hit with ratio and normal. A134 already decoded the engine's test (FUN_0000f688, Newell plane from the vertex order, negative side of cross(e1, e2) in this z-mirrored data). Unit tests on synthetic polygons and on S001's floor and the leaning book.
-2. **`sGround` and `MakeLandformNormal`.** Build the hit lists, `sRegistHitInfo`, `sGetAdjustGround` and `sGetAdjustWall`, `sGetHitInfo`. Output only: compare the lists against what the sphere push finds on bot runs (same floor, same walls), no change to movement yet.
+2. **(done, A146: `K.rayContacts`, tests/raycmp.js) `sGround` and `MakeLandformNormal`.** Build the hit lists, `sRegistHitInfo`, `sGetAdjustGround` and `sGetAdjustWall`, `sGetHitInfo`. Output only: compare the lists against what the sphere push finds on bot runs (same floor, same walls), no change to movement yet.
 3. **`sAdjustPosi` and `sReaction` without ibitsu.** Move the ball by the adjust, keep `sReflection`. Behind `?hit=ray`. Includes the hold-in-wall move nudge (A142) because the wall count then comes from rays.
 4. **Distort points and states.** `sRoll`, the 18 fixed points, the 6 fluid points from `MonoIbitsu`, `sCheckDistort`, FIX and FLUID states, `IbitsuMakeMatrix`, `sSetPosition`. Replaces the `S.lift` approximation (A64) when `?hit=ray` is on.
-5. **Everything that hangs off it:** the ibitsu sound (`gYm_SeGameReq_Ibitsu`, when the lump length ratio passes `_IBITSU_RATE`, value not yet found), attach depth, umbrellas, the downhill push of a lump (`sAddAcc`, `IbitsuAcc`).
+5. **Everything that hangs off it:** the ibitsu sound (`gYm_SeGameReq_Ibitsu`, when the lump length ratio passes `_IBITSU_RATE` = 0.30), attach depth, umbrellas, the downhill push of a lump (`sAddAcc`, `IbitsuAcc`).
 6. **Flip the default** only when the bot sweep on all stages is at least as good and the owner agrees.
 
 ## Open points before stage 4
 
-- `_MAX_DISTORT`, `_MAX_HITINFO`, `_IBITSU_RATE`, `_MAX_DISTORT_SCALE` and `IBITSU_WORK_NUM` are macros in headers that were not shipped. They need the binary (array sizes and constants in `sRoll`, `sCheckDistort`, `gYm_SeGameReq_Ibitsu`).
+- `_MAX_DISTORT`, `_MAX_HITINFO`, `_MAX_DISTORT_SCALE` and `IBITSU_WORK_NUM` are macros in headers that were not shipped. They need the binary (array sizes and constants in `sRoll`, `sCheckDistort`, `gYm_SeGameReq_Ibitsu`).
 - The radius vectors are set in `Katamari::sGetVector` (found, in A145).
 - HITSYS internals beyond the segment test: the one hit per normal rule is in `sRegistHitInfo`, but which polygons the grid returns and in what order is HITSYS (binary only).
