@@ -705,6 +705,7 @@
     o.spin = { ax: o.vel[0] > o.vel[2] ? [0, 0, 1] : [1, 0, 0], w: 0.2 };   // gNk_StartMonoForceMove: spin 0.2 rad per frame about Z when vx > vz, else X
     o.state = 'fly'; o.flyT = 0; o.hitOff = S.frame + CR.hitOff; o.crumbleVol = 0; o.path = null;
   }
+  const MONO_BOUND_Y = 0.55, MONO_BOUND_XZ = 0.95;   // GUESS (A166): the engine's BoundRegist and GroundRegist are macros I could not find, so the ball's landing values (A108) stand in
   function flyMonos(S) {                                     // thrown objects: ballistic until they reach the floor, then they lie there and can be caught again
     for (const o of S.objs) {
       if (o.state !== 'fly') continue;
@@ -712,7 +713,11 @@
       for (let q = 0; q < 3; q++) o.pos[q] += o.vel[q];
       o.rot = mmul(axisAngle(o.spin.ax, o.spin.w), o.rot);
       const bottom = o.pos[1] + o.lo[1], sup = o.vel[1] <= 0 ? supportAt(S, o.pos[0], o.pos[2], bottom + Math.abs(o.vel[1]) + 1, bottom + Math.abs(o.vel[1]) + 1) : null;
-      if (sup !== null && bottom <= sup) { o.pos[1] = sup - o.lo[1]; land(o); }
+      if (sup !== null && bottom <= sup) {
+        o.pos[1] = sup - o.lo[1];
+        if (o.stopLand && (o.bnc = (o.bnc || 0) + 1) < 8) { o.vel[1] = -o.vel[1] * MONO_BOUND_Y; o.vel[0] *= MONO_BOUND_XZ; o.vel[2] *= MONO_BOUND_XZ; o.flyT = 0; }   // Pac-Man and Galaga: bounce, then stop after 8 ground bounces (MonoSub.cppi, A166)
+        else land(o);
+      }
       else if (o.flyT > CR.flyMax || o.pos[1] < -5000) { o.state = 'gone'; }   // fell off the map
     }
   }
@@ -741,7 +746,7 @@
     return bi;
   }
   function convergeRay(S, vmax, hits) {
-    const ratio = 1 - Math.hypot(S.speed, S.dy) / Math.max(vmax, 1e-6) * CR.conv; if (ratio >= 1 || !hits.length) return;
+    const ratio = Math.max(0.5, 1 - Math.hypot(S.speed, S.dy) / Math.max(vmax, 1e-6) * CR.conv * (S.convMul || 1)); if (ratio >= 1 || !hits.length) return;
     for (const h of hits) {
       if (typeof h.di !== 'number' || h.di < 1) continue;
       for (const a of S.attached) if (a.near === h.di) a.lpos = [a.lpos[0] * ratio, a.lpos[1] * ratio, a.lpos[2] * ratio];

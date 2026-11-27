@@ -38,12 +38,16 @@ function prog(vs, fs) {
 }
 const P = prog(`
   attribute vec3 aPos; attribute vec3 aNrm; attribute vec2 aUv;
-  uniform mat4 uVP; uniform mat4 uModel; varying vec3 vN; varying vec2 vUv;
-  void main() { gl_Position = uVP * (uModel * vec4(aPos, 1.0)); vN = mat3(uModel) * aNrm; vUv = aUv; }`,
+  uniform mat4 uVP; uniform mat4 uModel; varying vec3 vN; varying vec2 vUv; varying vec4 vClip;
+  void main() { gl_Position = uVP * (uModel * vec4(aPos, 1.0)); vClip = gl_Position; vN = mat3(uModel) * aNrm; vUv = aUv; }`,
 `
-  precision mediump float; varying vec3 vN; varying vec2 vUv; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec3 uLight; uniform float uAlpha; uniform float uFlat;
+  precision mediump float; varying vec3 vN; varying vec2 vUv; varying vec4 vClip; uniform vec4 uCut; uniform float uAsp; uniform sampler2D uTex; uniform float uUseTex; uniform vec3 uTint; uniform vec3 uLight; uniform float uAlpha; uniform float uFlat;
   void main() {
     vec4 c = uUseTex > 0.5 ? texture2D(uTex, vUv) : vec4(uTint, 1.0);
+    if (uCut.z > 0.0 && vClip.w < uCut.w) {   // optional see-through cutout (A167): screen-door fade round the ball for surfaces that are in front of it
+      float dd = length((vClip.xy / vClip.w - uCut.xy) * vec2(uAsp, 1.0)), fade = 0.9 * (1.0 - smoothstep(uCut.z * 0.6, uCut.z, dd));
+      if (fract(dot(floor(gl_FragCoord.xy), vec2(0.754877666, 0.569840296))) < fade) discard;
+    }
     if (c.a < 0.002) discard;   // the engine's alpha test is GL_NOTEQUAL 0 (A117); the rest of the alpha is blended below
     vec3 n = normalize(vN);
     // uLight.z = 1: the engine's fixed-function light. Ambient 0.3 (light) + 0.2 (GL default scene ambient), diffuse 1.0, direction (42, -349, -29) from the binary with y flipped for our y-up frame (A117). Others: my presets
@@ -52,7 +56,7 @@ const P = prog(`
   }`);
 const L = { pos: gl.getAttribLocation(P, 'aPos'), nrm: gl.getAttribLocation(P, 'aNrm'), uv: gl.getAttribLocation(P, 'aUv'),
   vp: gl.getUniformLocation(P, 'uVP'), model: gl.getUniformLocation(P, 'uModel'),
-  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint'), light: gl.getUniformLocation(P, 'uLight'), alpha: gl.getUniformLocation(P, 'uAlpha'), flat: gl.getUniformLocation(P, 'uFlat') };
+  tex: gl.getUniformLocation(P, 'uTex'), use: gl.getUniformLocation(P, 'uUseTex'), tint: gl.getUniformLocation(P, 'uTint'), light: gl.getUniformLocation(P, 'uLight'), alpha: gl.getUniformLocation(P, 'uAlpha'), flat: gl.getUniformLocation(P, 'uFlat'), cut: gl.getUniformLocation(P, 'uCut'), asp: gl.getUniformLocation(P, 'uAsp') };
 
 // ---- loading (same data layout as the viewer) ----
 const pow2 = n => (n & (n - 1)) === 0;
@@ -160,7 +164,7 @@ let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E', extra: 'T' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E', extra: 'T' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; S.convMul = OPT.convfast ? 4 : 1; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
   prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; if (MODE === 'extra' && EXG === 1) KSnd.stopBgm(); else KSnd.bgm(MODE === 'extra' && EXG === 2 ? 'BGM_ST14' : MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
@@ -304,6 +308,11 @@ function draw(alpha) {
   const vp = M.mul(M.persp(Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, GALCAM && GALROLL() ? [0,-1,0] : [0,1,0]));
   gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
+  { // see-through cutout (option, off by default): map and loose objects that are nearer the camera than the ball centre fade out in a disc round the ball on screen. The original has no such thing (A167)
+    const fy = Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), cw = vp[3] * pos[0] + vp[7] * pos[1] + vp[11] * pos[2] + vp[15];
+    if (OPT.cutout && !GALCAM && cw > 0.05) gl.uniform4f(L.cut, (vp[0] * pos[0] + vp[4] * pos[1] + vp[8] * pos[2] + vp[12]) / cw, (vp[1] * pos[0] + vp[5] * pos[1] + vp[9] * pos[2] + vp[13]) / cw, Math.min(0.6, 1.6 * R / (cw * Math.tan(fy / 2))), cw - R * 0.9); else gl.uniform4f(L.cut, 0, 0, 0, 0);
+    gl.uniform1f(L.asp, w / h);
+  }
   // map
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
@@ -323,6 +332,7 @@ function draw(alpha) {
       gl.depthMask(true); gl.depthFunc(gl.LESS); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); setCull(); bindGroup(og);   // the ripple quad bound its own buffers; the attached objects drawn next need the object buffers back (they vanished in water, tester 2026-11-27)
     }
   }
+  gl.uniform4f(L.cut, 0, 0, 0, 0);   // the ball, its attached objects and the prince are never cut
   const bpos = pos; pulse *= 0.86;
   G.vp = vp.slice ? vp.slice() : vp;
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
@@ -364,7 +374,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { KFACE: 'ui/IMAGE/SYSIMG04.png', SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
+const IMGS = { EXGAL1: 'ui/GAMEDT2x/GiEXGAL1.png', KFACE: 'ui/IMAGE/SYSIMG04.png', SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -386,12 +396,20 @@ function fmtDiamHud(cm) {   // as the original shows it: 6cm4mm, 1m24cm1mm
   return m > 0 ? m + 'm' + String(c).padStart(2, '0') + 'cm' + mm + 'mm' : c > 0 ? c + 'cm' + mm + 'mm' : mm + 'mm';   // tester: 4.028632 m is 4m02cm8mm (A72)
 }
 function fmtDiam(cm) { return fmtDiamHud(cm); }
+// GiEXGAL1 holds the art STAGE 1, STAGE 2 and STAGE 3 (rows 37, 109 and 178 of the 512 x 256 sheet); the binary's draw call for it was not found, so the place, size and time (2.5 s, fading) are mine (A166)
+function galBanner(W, H) {
+  const b = typeof EX !== 'undefined' && EX && EX.banner; if (!(MODE === 'extra' && EXG === 3 && b && UI.EXGAL1)) return;
+  const age = (S.frame - b.f) / KSim.FPS, T = 2.5; if (age < 0 || age > T) return;
+  const rows = [[37, 31], [109, 31], [178, 31]][b.n - 1], sw = 270, sh = rows[1] + 6, dw = Math.min(W * 0.5, 300), dh = dw * sh / sw;
+  hx.save(); hx.globalAlpha = age < 0.3 ? age / 0.3 : age > T - 0.5 ? (T - age) / 0.5 : 1; hx.drawImage(UI.EXGAL1, 118, rows[0] - 3, sw, sh, (W - dw) / 2, H * 0.38, dw, dh); hx.restore();
+}
 function drawHud() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2), W = hudc.clientWidth, H = hudc.clientHeight;
   if (hudc.width !== Math.floor(W * dpr)) { hudc.width = Math.floor(W * dpr); hudc.height = Math.floor(H * dpr); }
   hx.setTransform(dpr, 0, 0, dpr, 0, 0); hx.clearRect(0, 0, W, H);
   if (!G.ready || !S) return;
   echoDraw(W, H);
+  galBanner(W, H);
   const gs = Math.max(120, Math.min(190, Math.min(W, H) * 0.3));
   // size gauge (A140, FUN_00031568): the green back gear (GiSIZEB) and the rainbow front gear (GiSIZEF) are both scaled from the screen corner by s = 0.3 + 0.7 * min(1.5, (diameter - start) / (goal - start)), and pulse against each other:
   // back * (1 + 0.05 sin a), front * (1 - 0.05 sin a), where a steps by 45 degrees every 3 frames (24 frame cycle). Which of the two takes the plus sign is my guess (the back one is drawn first); gs is my full size
@@ -614,9 +632,9 @@ for (const [id, q, label, go] of CONFIRMS) $(id).onclick = () => {
   go();
 };
 const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.light][0]; $('pTex').textContent = 'Textures: ' + FILTERS[SET.filter]; };
-const OPTS = [['pOMin', 'minute', 'Extra minute on timed runs (restart to apply)'], ['pOQuiet', 'quiet', 'Repeating object sounds off'], ['pOWide', 'wide', 'Wide view (keeps the 33 degree vertical angle)'], ['pOClimb', 'climb', 'Straight wall climb (no sideways slide)'], ['pOFar', 'far', 'Long draw distance (nothing is clipped by distance)']];
+const OPTS = [['pOMin', 'minute', 'Extra minute on timed runs (restart to apply)'], ['pOQuiet', 'quiet', 'Repeating object sounds off'], ['pOWide', 'wide', 'Wide view (keeps the 33 degree vertical angle)'], ['pOClimb', 'climb', 'Straight wall climb (no sideways slide)'], ['pOFar', 'far', 'Long draw distance (nothing is clipped by distance)'], ['pOCut', 'cutout', 'See-through cutout when something blocks the view'], ['pOSize', 'sizeroll', 'Size to roll up shown in the Collection'], ['pOConv', 'convfast', 'Objects sink into the ball 4 times faster']];
 function syncOpts() { for (const [id, k, label] of OPTS) $(id).textContent = label + ': ' + (OPT[k] ? 'on' : 'off (original)'); }
-for (const [id, k] of OPTS) $(id).onclick = () => { OPT[k] = !OPT[k]; saveOpt(); syncOpts(); if (G.S) G.S.climbLock = !!OPT.climb; };
+for (const [id, k] of OPTS) $(id).onclick = () => { OPT[k] = !OPT[k]; saveOpt(); syncOpts(); if (G.S) { G.S.climbLock = !!OPT.climb; G.S.convMul = OPT.convfast ? 4 : 1; } };
 $('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
 $('pTex').onclick = () => { SET.filter = (SET.filter + 1) % FILTERS.length; saveSet(); applyFilter(); syncSet(); };
 syncSet();
@@ -781,11 +799,11 @@ function galDrop(f) {   // FUN_00054618: a shot throws off 20% of what is attach
   for (const o of att.slice(0, k)) { const sl = GAL.slots.find(q => q.mono === S.objs.indexOf(o)); if (sl) { sl.dropped = true; sl.lives = 0; } o.stopLand = true; KSim.crumbleOne(S, S.attached.indexOf(o), 1.0); }
 }
 function galPre() {
-  if (!EX.started) { EX.started = true; KSnd.se('galaga_11'); }   // stage intro, id 0x43
+  if (!EX.started) { EX.started = true; KSnd.se('galaga_11'); EX.banner = { n: 1, f: S.frame }; }   // stage intro, id 0x43
   KGal.step(GAL, { x: S.pos[0], z: KGal.PLAYER_Z, diam: S.diam });
   for (const e of GAL.events.splice(0)) {
     if (e.t === 'dive') KSnd.se('galaga_19'); else if (e.t === 'shot') KSnd.se('galaga_04'); else if (e.t === 'hit') KSnd.se('galaga_23'); else if (e.t === 'beam') KSnd.se('galaga_05'); else if (e.t === 'beamBack') KSnd.se('galaga_09'); else if (e.t === 'rescue') KSnd.se('galaga_17');   // ids 0x3d, 0x41, 0x49   // ids 0x4b, 0x3c, 0x4f
-    else if (e.t === 'stage' && e.stage === 2) KSnd.se('galaga_13'); else if (e.t === 'stage' && e.stage === 3) KSnd.se('galaga_20');   // ids 0x45, 0x4c
+    else if (e.t === 'stage' && e.stage === 2) { KSnd.se('galaga_13'); EX.banner = { n: 2, f: S.frame }; } else if (e.t === 'stage' && e.stage === 3) { KSnd.se('galaga_20'); EX.banner = { n: 3, f: S.frame }; }   // ids 0x45, 0x4c
     else if (e.t === 'clear' && !EX.done) { EX.done = true; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }
   }
 }

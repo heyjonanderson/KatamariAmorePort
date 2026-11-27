@@ -92,6 +92,14 @@ function albScreen(si) {
   const box = $('abList'); box.innerHTML = '';
   if (!items.length) { const d = document.createElement('div'); d.textContent = '\u2013'; box.appendChild(d); }
   items.forEach(([k, n]) => { const d = document.createElement('div'), a = document.createElement('span'), b = document.createElement('span'); a.textContent = k; b.textContent = '\u00d7' + n; d.appendChild(a); d.appendChild(b); box.appendChild(d); });
+  // optional (A167): the size to roll up each item, from the item's volume with the same formula the game's pickup test uses (sim.js engineCatchMm)
+  let opt = {}; try { opt = JSON.parse(localStorage.getItem('kam_opt') || '{}') || {}; } catch (e) {}
+  if (opt.sizeroll && items.length) (async () => {
+    plays = plays || {};
+    if (!plays[st]) { try { plays[st] = await (await fetch(`data/${st}/play.json?v=39`)).json(); } catch (e) { return; } }
+    const info = plays[st].info, rows = box.children;
+    items.forEach(([k], j) => { const i = info[k]; if (!i || !rows[j]) return; const mm = Math.floor(2000 * Math.cbrt(3 * i.boxvol * i.vol_ratio / 0.1 / (4 * Math.PI))), t = document.createElement('span'); t.textContent = ' \u2265 ' + KT.fmtSize(mm / 10); t.style.opacity = '0.7'; rows[j].children[0].appendChild(t); });
+  })();
   const nAch = Object.keys(col.ach || {}).length;
   $('abName').textContent = names[si] || st; $('abCount').textContent = items.length;
   $('abInfo').textContent = (al[0] || '').replace('\n', ' ') + '\n\n' + nAch + ' achievements  \u00b7  Extra item ' + (col.extra && col.extra[pack - 1] ? 'found' : 'not found');
