@@ -317,7 +317,7 @@ function draw(alpha) {
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ripQ.tex); gl.uniform1f(L.use, 1); gl.uniform1f(L.flat, 1);
       gl.disable(gl.CULL_FACE); gl.depthFunc(gl.ALWAYS); gl.depthMask(false);
       for (const r of S.ripples) { gl.uniform1f(L.alpha, r.alpha); gl.uniformMatrix4fv(L.model, false, M.fromR3([1,0,0, 0,1,0, 0,0,1], r.pos, r.scale)); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0); }
-      gl.depthMask(true); gl.depthFunc(gl.LESS); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); setCull();
+      gl.depthMask(true); gl.depthFunc(gl.LESS); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); setCull(); bindGroup(og);   // the ripple quad bound its own buffers; the attached objects drawn next need the object buffers back (they vanished in water, tester 2026-11-27)
     }
   }
   const bpos = pos; pulse *= 0.86;
