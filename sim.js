@@ -364,7 +364,7 @@
     GRID = Math.max(40, (opts.startDiam || mf[8]) * 1.5);
     const startDiam = opts.startDiam || mf[8], tgtInfo = !opts.noTarget && play.mis.target && play.info[play.mis.target], cm = i => opts.catchMode === 'f0' ? i.catch_mm : (opts.catchMode === 'goal' && i.catch_goal_mm !== undefined) ? i.catch_goal_mm : engineCatchMm(i), goal = opts.goal || (tgtInfo ? cm(tgtInfo) / 10 : mf[9]);   // story clear = pick up the target mono (GameClear.cppi sCheck1P_N); goal is its catch size, used for the HUD gauge
     const S = {
-      G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
+      G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: fixSpeedTable(play.mis.speed.filter(r => r.length >= 11), play.mis.speed_k), speedLimit: play.mis.speed_limit || Infinity, cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
       vy: 0, dy: 0, climbLock: !!opts.climbLock, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
@@ -464,8 +464,9 @@
     return null;
   }
   const radius = S => S.diam / 2;
-  const maxSpeed = S => interpRows(S.speedRows, S.diam, 1);
-  const gravity = S => interpRows(S.gravRows, S.diam, 1);
+  const maxSpeed = S => tableParams(S).speed;
+  const gravity = S => interpRows(S.gravRows, S.diam, 1);   // the GRAVITY section: thrown objects (Mono::GetCurrentGravity); the ball uses the speed table's own column (A153)
+  const ballGravity = S => tableParams(S).grav;                 // sNowTd->f32Gravity, interpolated and capped like the speed (KatamariMain.cppi gYm_KatamariGetTableParam)
   const addRatio = S => S.addRows.length ? interpRows(S.addRows, S.diam, 1) : 1;      // A-VR: table is (diameter, ratio) pairs
 
   function grow(S, add) {
@@ -477,12 +478,25 @@
   // KATAMARI table row at the current diameter, linearly interpolated like gYm_KatamariGetTableParam.
   // File column order (A27, from the struct offsets that gYm_KatamariGetTableParam reads in the binary): 0 diameter, 1 speed, 2 gravity, 3-6 brake effect F/B/S/dash,
   // 7-10 max speed ratio F/B/S/dash, 11-12 slope ratio up/down (unused: the shipped game sets IgnoreSlope), 13-16 acceleration F/B/S/dash, 17 prince offset Z, 18-20 alarm near/middle/far
+  // SPEED_TABLE loader (FUN_0001193c, A153): after reading the rows the engine walks them from the third on, keeping the last 'anchor' row. A row (diameter >= 0) whose speed is at or below
+  // anchor speed x (diameter / anchor diameter) x k (k is the section's second float, 0.7 to 0.9) is raised to that value and the anchor stays; otherwise the row becomes the anchor.
+  // So the speed never grows slower than k times linearly with the size: Stage 1's flat 7.2 from 100 to 200 cm becomes 11.5 at 200
+  function fixSpeedTable(rows, k) {
+    const T = rows.map(r => r.slice()); if (!(k > 0) || T.length < 3) return T;
+    const f = Math.fround; let prev = T[1];
+    for (let i = 2; i < T.length; i++) {
+      const row = T[i]; let np = prev;
+      if (row[0] > 0) { const v = f(f(prev[1] * f(row[0] / prev[0])) * k); np = row; if (row[1] <= v) { row[1] = v; np = prev; } }
+      prev = np;
+    }
+    return T;
+  }
   function tableParams(S) {
-    const T = S.tab, d = Math.max(S.diam, T[1] ? T[1][0] : 0);
+    const T = S.tab, d = Math.min(S.speedLimit, Math.max(S.diam, T[1] ? T[1][0] : 0));   // gYm_KatamariGetTableParam: the lookup size is capped at gf32KataLimitSize (the section's first float)
     let i = 2; while (i < T.length - 1 && d > T[i][0]) i++;
     const a = T[i - 1], b = T[i], t = Math.max(0, Math.min(1, (d - a[0]) / ((b[0] - a[0]) || 1)));
     const L = c => a[c] + (b[c] - a[c]) * t;
-    return { speed: L(1), brakeF: L(3), brakeB: L(4), brakeS: L(5), brakeD: L(6), rF: L(7), rB: L(8), rS: L(9), rD: L(10), accF: L(13), accB: L(14), accS: L(15), accD: L(16), oujiZ: L(17) };
+    return { speed: L(1), grav: L(2), brakeF: L(3), brakeB: L(4), brakeS: L(5), brakeD: L(6), rF: L(7), rB: L(8), rS: L(9), rD: L(10), accF: L(13), accB: L(14), accS: L(15), accD: L(16), oujiZ: L(17) };
   }
   // Camera row at the current diameter (CAMERA_DATA): eye offset behind/up, look-at offset ahead/up, far clip. Offsets are logic space, y down.
   // Camera rows, from the engine (FUN_00029948, A102). The row is chosen by a step rule, not blended: row i serves diameters above row i's own size
@@ -912,7 +926,7 @@
           const m = axisAngle([vz / mh, 0, -vx / mh], w); b.rot = mmul(m, b.rot); S.R = mmul(m, S.R);   // mDistortRot = m x mDistortRot, mRot = m x mRot
         }
         const v = mvec(b.rot, [-b.fluidVec[0], -b.fluidVec[1], -b.fluidVec[2]]); S.pos = [b.posi[0] + v[0], b.posi[1] + v[1], b.posi[2] + v[2]]; S.vy = 0; moved = 0;
-      } else { const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy + (cw.on ? 0 : S.dy); }
+      } else { const g = cw.on ? 0 : ballGravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy + (cw.on ? 0 : S.dy); }
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.lastRay = { c, old: oldP };
@@ -1030,7 +1044,7 @@
     // vertical. Flight bookkeeping is sStatFly: FlyTime counts frames in the air, FlyFallTime the frames moving down
     if (!S.ray) {
       if (S.grounded || cw.on) { S.flyT = 0; S.fallT = 0; } else { S.flyT++; if (S.vy < 0) S.fallT++; }
-      const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g;
+      const g = cw.on ? 0 : ballGravity(S); S.vy = cw.on ? 0 : S.vy - g;
       let y = S.pos[1] + S.vy; const sup = supportAt(S, S.pos[0], S.pos[2], y - R + stepW + Math.max(0, -S.vy), y - R + climbW + Math.max(0, -S.vy));
       if (sup !== null && y - R <= sup) {
         if (S.vy < 0 && !S.grounded && !cw.on && !S.reflV && !S.noReflect) landingBounce(S, vmax, sup);   // landing from the air (sReflection, Fly branch, A107)

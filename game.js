@@ -236,6 +236,12 @@ function drawIcon(now) {   // renders lastPick's model into the bottom left 128 
   iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
   gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
+let _sf = null, _sfPlay = null;
+function stageFar() {   // optional long draw distance: the stage's whole object spread (diagonal of the box around every object, plus 20%), so no distance clipping is left. The engine clips at the first GRAPHICS far only (A52, A153)
+  if (_sfPlay === play) return _sf;
+  let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (const o of play.objs) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], o.p[k]); hi[k] = Math.max(hi[k], o.p[k]); }
+  _sf = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 1.2; _sfPlay = play; return _sf;
+}
 function camInit() {   // gYm_CameraInit: the row for the current size, no transition
   const idx = KSim.cameraRow(S), cp = KSim.cameraParams(S, idx);
   cam.idx = idx; cam.back = cp.back; cam.up = cp.up; cam.ahead = cp.ahead; cam.lookUp = cp.lookUp; cam.far = cp.far; cam.trans = 0; cam.ready = true;
@@ -290,7 +296,7 @@ function draw(alpha) {
     if (t !== null) { const f = t / lb, sw = Math.min(10 + 75 * Math.min(1, Math.max(0, 1 - f)), 85 - e0 * 180 / Math.PI); e = e0 + Math.max(0, sw) * Math.PI / 180; } }
   cam.e = e; cam.L = lb;
   const eye = [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
-  const far = FARMODE === 'old' ? Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3) : (play.mis.far || 800);   // The scene camera (the singleton FUN_0002bca8 draws the world with) gets the FIRST near/far pair of GRAPHICS (A52); the second pair goes to another object. Far is fixed per stage, 800 cm in stage 1. ?far=old brings back the longer clip range I used before
+  const far = OPT.far ? Math.max(play.mis.far || 800, stageFar()) : FARMODE === 'old' ? Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3) : (play.mis.far || 800);   // The scene camera (the singleton FUN_0002bca8 draws the world with) gets the FIRST near/far pair of GRAPHICS (A52); the second pair goes to another object. Far is fixed per stage, 800 cm in stage 1. ?far=old brings back the longer clip range I used before
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
   const vp = M.mul(M.persp(Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
   gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
@@ -593,7 +599,7 @@ for (const [id, q, label, go] of CONFIRMS) $(id).onclick = () => {
   go();
 };
 const syncSet = () => { $('pLight').textContent = 'Lighting: ' + LIGHTS[SET.light][0]; $('pTex').textContent = 'Textures: ' + FILTERS[SET.filter]; };
-const OPTS = [['pOMin', 'minute', 'Extra minute on timed runs (restart to apply)'], ['pOQuiet', 'quiet', 'Repeating object sounds off'], ['pOWide', 'wide', 'Wide view (keeps the 33 degree vertical angle)'], ['pOClimb', 'climb', 'Straight wall climb (no sideways slide)']];
+const OPTS = [['pOMin', 'minute', 'Extra minute on timed runs (restart to apply)'], ['pOQuiet', 'quiet', 'Repeating object sounds off'], ['pOWide', 'wide', 'Wide view (keeps the 33 degree vertical angle)'], ['pOClimb', 'climb', 'Straight wall climb (no sideways slide)'], ['pOFar', 'far', 'Long draw distance (nothing is clipped by distance)']];
 function syncOpts() { for (const [id, k, label] of OPTS) $(id).textContent = label + ': ' + (OPT[k] ? 'on' : 'off (original)'); }
 for (const [id, k] of OPTS) $(id).onclick = () => { OPT[k] = !OPT[k]; saveOpt(); syncOpts(); if (G.S) G.S.climbLock = !!OPT.climb; };
 $('pLight').onclick = () => { SET.light = (SET.light + 1) % LIGHTS.length; saveSet(); syncSet(); };
