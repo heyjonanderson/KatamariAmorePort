@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 const PACKS = [null, ['S001', 'S002', 'S003', 'S004', 'S005', 'S006'], ['S008', 'S009', 'S010', 'S011', 'S012', 'S013'], ['S015', 'S016', 'S017', 'S018', 'S019', 'S020']];   // S007, S014 and S021 are the extra mini-game stages, not ported (A104)
 let pack = Math.min(3, Math.max(1, parseInt(qs.get('pack'), 10) || 1)); const STAGES = () => PACKS[pack];
+const EXTRA = ['S007', 'S014', 'S021'];   // the mini-game stage of each pack
 const PLAYABLE = 6;                                   // all six stages of every pack run (pack 1 stages 2 to 6 are bot-tested, packs 2 and 3 are not yet: flagged)
 const MODES = [
   { id: 'story', name: 'Story', info: 0 },
@@ -63,6 +64,9 @@ function stageScreen() {
     else if (i > 0) { const f = document.createElement('div'); f.className = 'flag'; f.style.left = (x + 6) + 'px'; f.style.top = (y + 6) + 'px'; f.textContent = 'rough'; box.appendChild(f); }
     t.onclick = () => { if (i >= PLAYABLE) { $('stInfo').textContent = KT.group('COMING_SOON')[0].replace('\n', ' '); return; } KSnd.se('KD_SE_common_00'); stageIdx = i; modeScreen(); };
   });
+  { const col = (() => { try { return JSON.parse(localStorage.getItem('kam_col') || '{}'); } catch (e) { return {}; } })(), found = !!(col.extra && col.extra[pack - 1]) || qs.get('unlock') === 'extra', b = $('stExtra'), nm = KT.group('STAGE_NAME')[6] || 'Extra Stage'; let r = {}; try { r = (JSON.parse(localStorage.getItem('kam_rec') || '{}'))[EXTRA[pack - 1]] || {}; } catch (e) {}
+    b.textContent = found ? nm + (r.score ? '  (best ' + r.score + ')' : '') : nm + ' (locked)'; b.className = 'small' + (found ? '' : ' off');
+    b.onclick = () => { if (!found) { $('stInfo').textContent = 'Find the mini-game item in stage ' + (pack === 1 ? 'two' : pack === 2 ? 'four' : 'five') + ' of this pack.'; return; } KSnd.se('KD_SE_common_00'); briefExtra(); }; }
   $('stBack').onclick = packScreen; $('stPack').onclick = packScreen; $('stDemo').onclick = () => demo(stageScreen); $('stRec').onclick = () => recScreen('story'); $('stAlb').onclick = () => albScreen(0);
 }
 
@@ -120,6 +124,14 @@ async function brief(i) {
   else { const ei = KT.group('ETER_INFO'); pages = KT.pages([[ei[i * 2], ei[i * 2 + 1]], 'ETER_INFO_COM', [KT.group('START_GAME')[i]], KT.group('START_COM').slice(8, 10)], v); }
   show('sKing');
   const go = () => { if (dlg) dlg.stop(); location.href = `game.html?stage=${st}&mode=${mode}`; };
+  dlg = KT.dialog($('kDlg'), pages, go); $('kSkip').onclick = go;
+}
+
+// Extra stages: the mini-game guide text (EXTRA_GUIDE1 to 3) is the briefing, then START (A158)
+async function briefExtra() {
+  const st = EXTRA[pack - 1]; KT.setPack(pack); const g = (KT.group('EXTRA_GUIDE')[0] || '').split(/\n　\n/), pages = KT.pages([g]);
+  show('sKing');
+  const go = () => { if (dlg) dlg.stop(); location.href = `game.html?stage=${st}&mode=extra`; };
   dlg = KT.dialog($('kDlg'), pages, go); $('kSkip').onclick = go;
 }
 

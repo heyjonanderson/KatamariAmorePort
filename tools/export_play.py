@@ -14,9 +14,10 @@ def mis_sections(c):
     return {nm: (ty, c[off:end]) for (nm, ty, off), end in zip(ent, ends)}
 def floats(b): k = struct.unpack('>H', b[:2])[0]; return list(struct.unpack('>%df' % k, b[2:2+4*k]))
 def extra_mis(sec):
+    # The extra stages (S007, S014, S021) have only the plain TIME_LIMIT section, which stands in for TIME_LIMIT_1 (A158).
     # TIME_LIMIT_1 = [par seconds, ?, story limit, time attack limit, exact limit, eternal limit] (the variant both reference videos match, A90);
     # MISSION_DATA_EXT = u16 count, then ints: [exact target mm, tolerance mm, 16-byte name, ?, time attack goal mm, ?, floats...] (A91)
-    tb = sec['TIME_LIMIT_1'][1]; n = struct.unpack('>H', tb[:2])[0]; tln = list(struct.unpack('>%dI' % n, tb[2:2+4*n]))
+    tb = (sec.get('TIME_LIMIT_1') or sec['TIME_LIMIT'])[1]; n = struct.unpack('>H', tb[:2])[0]; tln = list(struct.unpack('>%dI' % n, tb[2:2+4*n]))
     me = sec['MISSION_DATA_EXT'][1]; a, b = struct.unpack('>ii', me[2:10]); c = struct.unpack('>3i', me[26:38])
     return dict(time_limit_n=tln, exact_mm=a, exact_tol_mm=b, ta_goal_mm=c[1])
 for st in STAGES:

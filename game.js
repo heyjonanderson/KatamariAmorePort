@@ -160,11 +160,11 @@ let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; KSnd.bgm(MODE === 'timeattack' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
-  { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; else if (OPT.minute && (MODE === 'story' || MODE === 'timeattack')) S.timeLimit += 60; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; KSnd.bgm(MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
+  { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5], extra: tl[1] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; else if (OPT.minute && (MODE === 'story' || MODE === 'timeattack')) S.timeLimit += 60; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
 }
@@ -392,7 +392,7 @@ function drawHud() {
   // size number
   const nh = gs * 0.26; if (MODE !== 'exact') { hx.save(); hx.shadowColor = '#000a'; hx.shadowBlur = 4; drawNum(fmtDiamHud(S.diam), 10, gs * 0.64, nh, 'NUMW'); hx.restore(); }   // Exact Size: the size is the puzzle, so it is not shown (tester)
   // goal marker text
-  hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : MODE === 'exact' ? 'make it ' + fmtDiam(S.goal) : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
+  hx.fillStyle = '#fff'; hx.font = '12px system-ui, sans-serif'; hx.shadowColor = '#000'; hx.shadowBlur = 3; hx.fillText((MODE === 'extra' ? exHud() : S.targetLabel ? 'catch: ' + S.targetLabel + ' (' + fmtDiam(S.goal) + ')' : MODE === 'exact' ? 'make it ' + fmtDiam(S.goal) : 'goal ' + fmtDiam(S.goal)) + '   ' + S.picked + ' picked', 10, gs * 0.64 + nh + 18); hx.shadowBlur = 0;
   // timer, as in the original: minutes left in white beside a clock whose needle sweeps once a minute. The last minute turns red and counts seconds (A70)
   const inf = !isFinite(S.timeLimit), el = S.frame / KSim.FPS, left = inf ? el : Math.max(0, S.timeLimit - el), ts = Math.max(64, Math.min(96, Math.min(W, H) * 0.16)), tx = W - ts - 12, ty = 12;
   const lastMin = !inf && left < 60, face = lastMin ? UI.TIMERH : UI.TIMER;
@@ -441,8 +441,9 @@ function showResult() {
   if (MODE === 'story') names = S.won ? [PACK === 2 && LOCAL === 0 ? '=STORY_RES002' : 'STORY_RES01', elapsed > par ? 'STORY_RES02' : 'STORY_RES03'] : ['STORY_FAIL'];   // caught it: the King tells the time, then judges it against the par time (TIME_LIMIT_1[0])
   else if (MODE === 'exact') { const e = exactErr(); names = [e === 0 ? 'SIZE_RES03' : e > mis.exact_tol_mm ? 'SIZE_RES02' : 'SIZE_RES01']; v.size = fmtDiam(e === 0 || e <= mis.exact_tol_mm ? S.diam : S.goal); }   // [SIZE] is the player's size in SIZE_RES03 and the target in SIZE_RES02 ("to make the katamari [SIZE]"); spot on / outside the tolerance / inside it (MISSION_DATA_EXT) / outside the tolerance / inside it (MISSION_DATA_EXT)
   else if (MODE === 'eternal') names = ['ETER_RES'];
+  else if (MODE === 'extra') { v.score = String(EX.score); names = ['EXTRA_RES0' + (EX.score < EXG_T[EXG][0] ? 1 : EX.score < EXG_T[EXG][1] ? 2 : EX.score < EXG_T[EXG][2] ? 3 : 4)]; }   // FUN_00041520, selectedMiniGame 1/2: <2000, <5500, <10000, more; 3: <15000, <50000, <90000, more (A158)
   else names = ['TIME_RES01', mm < mis.ta_goal_mm ? 'TIME_RES02' : 'TIME_RES03'];   // time attack: under the stage's size threshold or not
-  if (S.won) names.unshift({ story: 'STORY_END', timeattack: 'TIME_END', exact: 'SIZE_END', eternal: 'ETER_END' }[MODE], 'END_COM');   // the success path (FUN_00033544 > FUN_00033620) plays the mode's own two-line goodbye, then END_COM ("Royal Rainbow!", FUN_0004014c right after the goodbye) before the result; the failure path (FUN_0003342c) goes straight to STORY_FAIL (A93)
+  if (S.won) names.unshift({ story: 'STORY_END', timeattack: 'TIME_END', exact: 'SIZE_END', eternal: 'ETER_END', extra: 'TIME_END' }[MODE], 'END_COM');   // the success path (FUN_00033544 > FUN_00033620) plays the mode's own two-line goodbye, then END_COM ("Royal Rainbow!", FUN_0004014c right after the goodbye) before the result; the failure path (FUN_0003342c) goes straight to STORY_FAIL (A93)
   const endN = S.won ? KT.pages([names[0], names[1]], v).length : 0, pages = KT.pages(names, v);
   $('res').style.display = 'block'; $('rRetry').style.display = $('rMenu').style.display = 'none';
   const done = () => { $('rRetry').style.display = $('rMenu').style.display = 'block'; };
@@ -529,6 +530,7 @@ function frame(now) {
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
       if (ev.type === 'pickup') gotPick = true;
       if (ev.type === 'pickup') collect(ev.name);
+      if (ev.type === 'pickup' && MODE === 'extra') exPick(ev.name);
       if (ev.type === 'pickup') { const i = S.info[ev.name]; if (i) lastPick = { label: i.label || ev.name, info: i }; }
       if (ev.type === 'pickup') { pulse = Math.min(1, pulse + 0.6); if (rings.length < 6) rings.push({ t0: performance.now() }); }   // the core pops out a little when something sticks (A61)
       if (ev.type === 'pickup') { const i = S.info[ev.name], cs = i && i.catch_se; if (cs) { const f = catchSeFile(STAGE, cs[2]); activeCatch = OPT.quiet ? null : { se: f, every: cs[4] || 300, next: S.frame + (cs[4] || 300) }; if (f) KSnd.se('KD2_SE_mono_' + String(f).padStart(2, '0')); } }   // requestMonoSe at the catch, then catchSE every N frames while it is the active one (A53)
@@ -545,7 +547,8 @@ function frame(now) {
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (!over && isFinite(S.timeLimit) && S.timeLimit * KSim.FPS - S.frame <= 30 * KSim.FPS && S.frame % KSim.FPS === 0) KSnd.se('KD_SE_game_19');   // last 30 seconds: a 1 s sound (id 0x19, game_19) is restarted whenever it is not playing (A94)
     if (isFinite(S.timeLimit) && S.timeLimit > 60 && S.frame === Math.round((S.timeLimit - 60) * KSim.FPS) && window.KText) toast = { t: 2.5 * KSim.FPS, text: KText.clean(KText.group('REMAIN_1MIN')[0]) };   // "1 minute remaining", from FUN_00024xxx: shown when the remaining-frames counter hits 60 s (A93)
-    if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); } else { lost = true; KSnd.stopBgm(); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
+    if (MODE === 'extra' && !over) exTick();
+    if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack' || MODE === 'extra') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); } else { lost = true; KSnd.stopBgm(); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
     if (!over && (Math.abs(inp.L) > 0.2 || Math.abs(inp.R) > 0.2)) { ouji.t += S.dash ? 2 : 1; if (ouji.t >= 4) { ouji.t = 0; ouji.pat = (ouji.pat + 1) % 4; } } else if (ouji.t === 0) ouji.pat = 0;
     spawnDust(over);
@@ -637,9 +640,38 @@ function saveRecord() {
     const rec = JSON.parse(localStorage.getItem('kam_rec') || '{}'), r = rec[STAGE] = rec[STAGE] || {}, el = S.frame / KSim.FPS;
     if (MODE === 'story') { if (S.won && (!r.story || el < r.story)) { r.story = +el.toFixed(1); r.newBest = true; } r.cleared = r.cleared || !!S.won; }
     else if (MODE === 'exact') { const e = exactErr(); if (r.exactMm === undefined || e < r.exactMm) { r.exactMm = e; r.newBest = true; } }
+    else if (MODE === 'extra') { if (!r.score || EX.score > r.score) { r.score = EX.score; r.newBest = true; } }
     else { const k = MODE; if (!r[k] || S.diam > r[k]) { r[k] = +S.diam.toFixed(1); r.newBest = true; } }
     localStorage.setItem('kam_rec', JSON.stringify(rec)); return r.newBest;
   } catch (e) { return false; }
+}
+
+// ---- extra stages (A158): S007 Pac-Man, S014 Tekken, S021 Galaga run as ordinary stages with a score instead of a size ----
+// The judgment thresholds, the Tekken score rules and its tables are the binary's (FUN_00041520, FUN_00052bb8, FUN_00052d48, tables at 0x89d00 and 0x89d94). Pac-Man and Galaga point values and the clear rules are my GUESSES (arcade values, A158).
+const EXG = { S007: 1, S014: 2, S021: 3 }[STAGE] || 0, EXG_T = [null, [2000, 5500, 10000], [2000, 5500, 10000], [15000, 50000, 90000]];
+const PAC_PTS = { COCKIE: 10, PCOCKIE: 50, CHERRY: 100, BERRY: 300, ORANGE: 500, APPLE: 700, MELON: 1000, MRED: 200, MBLUE: 200, MORANGE: 200, MPINK: 200, MIJIKE: 200 };
+const GAL_PTS = { GALAGA: 50, GOEI: 80, BOSSGALAGA: 150, TONBO: 100, GALBOSS: 300 };
+const TEK_CATS = [4, 8, 12, 13, 18, 22], TEK_MIN = [8, 8, 8, 10, 10, 10];   // the code's mono name indexes 5, 9, 0xd, 0xe, 0x13, 0x17 are MONOLIST position + 1 (the Heihachi statue is 0x1a there and 25 in the list): mushroom, grapes, beehive, rabbit, fish, boar
+const TEK_DOUBLE = [[400, 0, 1], [800, 0, 2], [1000, 1, 2], [1600, 1, 3], [1200, 2, 1], [1600, 2, 3], [2000, 2, 5], [2000, 4, 2], [2400, 5, 2], [3200, 5, 1], [4800, 5, 3], [6400, 5, 4]];
+const TEK_TRIPLE = [[1600, 0, 1, 3], [3200, 0, 2, 1], [4000, 1, 2, 3], [4800, 2, 1, 3], [8000, 4, 2, 1], [9600, 5, 2, 1], [12800, 5, 1, 3]];
+let EX = { score: 0, chain: 0, chainT: -999, dots: 0, hit: false, techs: [] };
+function exInit() { EX = { score: 0, chain: 0, chainT: -999, dots: S.objs.filter(o => o.n === 'COCKIE' || o.n === 'PCOCKIE').length, hit: false, techs: [] }; }
+function exHud() { return 'score ' + EX.score + (EXG === 1 ? '   dots left ' + S.objs.filter(o => (o.n === 'COCKIE' || o.n === 'PCOCKIE') && o.state === 'map').length : ''); }
+function exPick(name) {
+  if (EXG === 1) EX.score += PAC_PTS[name] || 0;
+  else if (EXG === 3) { EX.chain = S.frame - EX.chainT <= KSim.FPS ? EX.chain + 1 : 1; EX.chainT = S.frame; EX.score += (GAL_PTS[name] || 0) * EX.chain; }   // one go = several in about a second (GUESS: each catch counts as many times as the catches in the chain)
+}
+function tekScore() {   // ExTekken::calcScore
+  const keys = Object.keys(play.info), cnt = [0, 0, 0, 0, 0, 0]; for (const o of S.attached) { const k = TEK_CATS.indexOf(keys.indexOf(o.n)); if (k >= 0) cnt[k]++; }
+  const t = []; for (let n = 0; n < 3; n++) { let best = -1, run = 0; for (let i = 0; i < 6; i++) { if (cnt[i] >= run && cnt[i] >= TEK_MIN[i]) { best = i; run = cnt[i]; } } if (best < 0) break; t.push(best); cnt[best] = 0; }
+  let sc = 0; for (const k of t) sc += Math.floor(2 ** k * 200);
+  const tri = TEK_TRIPLE.find(r => r[1] === t[0] && r[2] === t[1] && r[3] === t[2]);
+  if (tri) sc += tri[0]; else { const d = TEK_DOUBLE.find(r => r[1] === t[0] && r[2] === t[1]); if (d) sc += d[0]; }
+  EX.techs = t; return sc;
+}
+function exTick() {
+  if (EXG === 2 && !EX.hit) { const R = S.diam / 2; for (const o of S.objs) if (o.n === 'HEIHACHI' && o.state === 'map' && Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) <= R + o.maxlen) { EX.hit = true; EX.score = tekScore(); S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); break; } }   // touching the statue ends the run and scores the trick (FUN_00014c.. MonoHit, mini-game 2, name index 0x1a)
+  if (EXG === 1 && EX.dots && !S.objs.some(o => (o.n === 'COCKIE' || o.n === 'PCOCKIE') && o.state === 'map')) { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // every pac-dot gone: level clear (GUESS)
 }
 
 // ---- exact size mode ----

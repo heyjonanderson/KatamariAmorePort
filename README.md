@@ -114,7 +114,7 @@ The data or code is in the app and nothing is in the way. This is the work queue
 - **Safari and Firefox on Android checks** (Tester 2026-11-25) [S]. Audio unlock and zoom guard are in (A125). Firefox on Android flashes when dash is pressed over and over; cause not known.
 - **Stage 2 (South American Ruins) wall climb check** (A79, A98, A110, A115) [S]. Tester says it cannot be finished. The bot stall was its own planner (A115); with wall climb in the planner it clears the stage in 649 s. Still unplayed by a person: roll at the 20 cm step near x = -530 and say if the climb feels doable.
 - **Check the camera wall avoidance assumptions** (A112) [S]. The swing rule is from the binary: one ray, 10 + 75 degrees by how close the hit is, capped at 85 degrees, no easing. Still unconfirmed: where the ray starts, the swing axis, and what the blocked flag at +0x230 drives. Compare with a reference video of a camera against a wall.
-- **Extra-stage result lines** (A104, A114) [S]. The EXTRA_RES lines (the King judging a mini-game score) belong to the Pac-Man, Tekken and Galaga stages, which are not ported. The achievement and unlock banners are built (A114).
+- **Extra-stage result lines** (A104, A114, A158) [done]. The King judges the mini-game score with the binary's own thresholds (FUN_00041520). The achievement and unlock banners are built (A114).
 
 ### Bot runs
 
@@ -135,7 +135,7 @@ Not in the shipped source files. Some can be pulled out of the compiled binary, 
 - **End banners and a few dialog triggers** (A93, A94) [S]. The 1 minute banner hold time (45 and 60 are passed in), the res_01 trigger and the variant selector for the result lines are not decoded. END_COM is now shown after the goodbye.
 - **Unused stage fields** (A91) [S]. The int at +0x44, three floats in the mission record and the story selector for the TIME_LIMIT variants are read but not interpreted.
 - **Menu layout and transitions** (A38 to A41) [M]. Button positions, timings and thumbnail order are mine. The art and text are the original’s. The layout code is in the binary. (The intro is now the original’s.)
-- **Pac-Man, Tekken and Galaga mini-games** (A93) [L]. The Time Attack mini-games are in the app but their source files are not shipped. They would have to be rebuilt from the binary. A tester asked for the 3 extra stages. Not planned yet.
+- **Pac-Man, Tekken and Galaga mini-games** (A93, A158) [partly done]. The three extra stages (S007, S014, S021) play as an Extra Stage button on each pack's stage screen, unlocked by the mini-game item (`?unlock=extra` on the stage screen opens them for testing). Done: the stages and their objects, the time limit, the score HUD, the King's judgment, and the Tekken rules from the binary (item counts, trick scores, combos). Guessed: Pac-Man and Galaga point values and the Pac-Man clear rule. Not done: ghosts that paralyze you, Galaga's enemy bullets that knock items off, and the mini-games' own sounds and effects.
 
 ### Future ideas
 
