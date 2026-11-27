@@ -145,7 +145,7 @@ function makeRippleQuad() {
 // ---- state ----
 let play = null, og = null, mg = null, ou = null, ball = null, S = null;
 const CAM_FRAMES = 32;   // frames a camera row change takes (mission struct word 4, FUN_00010d20)
-const cam = { yaw: 0, ready: false, idx: 0, trans: 0, far: 800, back: 20, up: 8, ahead: 8, lookUp: 0 };
+const cam = { yaw: 0, ready: false, idx: 0, trans: 0, far: 800, back: 20, up: 8, ahead: 8, lookUp: 0 }; G.cam = cam;   // test hook
 const keys = {};
 const pads = { S: null };                    // touch stick: {id, ox, oy, x, y}. One floating stick on the left, like the original (A70)
 let touchDash = false, touchFlip = false, lastPick = null;
@@ -355,7 +355,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
+const IMGS = { KFACE: 'ui/IMAGE/SYSIMG04.png', SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -431,6 +431,7 @@ function drawHud() {
     let kx = 0, ky = 0; if (p) { kx = p.x - p.ox; ky = p.y - p.oy; const m = Math.hypot(kx, ky); if (m > PAD_R) { kx *= PAD_R / m; ky *= PAD_R / m; } kx *= 0.6; ky *= 0.6; }
     if (UI.PADC) hx.drawImage(UI.PADC, bx + kx - 32, by + ky - 32, 64, 64); hx.restore(); } }
 }
+G.setToast = t => { toast = t; };   // test hook
 let toast = null, resShown = false, dlgRes = null, failSnd = false, failN = 0;
 
 // End of a run: the King comments in his own words (STRING.dat). The rules below are the original's own (FUN_00041520, A92)
@@ -509,7 +510,8 @@ function hud() {
   drawHud();
   if (S && G.ready) drawFx();
   if (!S) return;
-  if (toast) { const cv = $('hud'), x = cv.getContext('2d'), a = Math.min(1, toast.t / 30); x.save(); x.globalAlpha = a; x.font = `bold ${Math.round(cv.height * 0.035)}px sans-serif`; x.textAlign = 'center'; x.shadowColor = '#000c'; x.shadowBlur = 6; x.fillStyle = '#fff'; toast.text.split('\n').forEach((ln, k) => x.fillText(ln, cv.width / 2, cv.height * (0.2 + 0.045 * k))); x.restore(); toast.t--; if (toast.t <= 0) toast = null; }
+  if (toast) { const cv = $('hud'), x = cv.getContext('2d'), a = Math.min(1, toast.t / 30); x.save(); x.globalAlpha = a; x.font = `bold ${Math.round(cv.height * 0.035)}px sans-serif`; x.textAlign = 'center'; x.shadowColor = '#000c'; x.shadowBlur = 6; x.fillStyle = '#fff'; if (toast.face && UI.KFACE) { const fh = cv.height * 0.2, fw = fh * 64 / 118, fx = cv.width / 2 - Math.max(...toast.text.split('\n').map(l => x.measureText(l).width)) / 2 - fw - 14, fy = cv.height * 0.2 - fh * 0.45, talk = toast.t > 20 && Math.floor(toast.t / 5) % 2 === 0; x.shadowBlur = 0; x.drawImage(UI.KFACE, talk ? 64 : 0, 0, 64, 118, fx, fy, fw, fh); x.shadowBlur = 6; }   // the King's head beside the line, mouth flapping while it is up: the in-game message balloon (FUN_000341a0, face frame from FUN_0003437c, art SYSIMG04, A155)
+    toast.text.split('\n').forEach((ln, k) => x.fillText(ln, cv.width / 2, cv.height * (0.2 + 0.045 * k))); x.restore(); toast.t--; if (toast.t <= 0) toast = null; }
   if ((S.won || lost) && !resShown) showResult();
 }
 
@@ -546,7 +548,7 @@ function frame(now) {
     if (activeCatch && !over && S.frame >= activeCatch.next) { if (activeCatch.se) KSnd.se('KD2_SE_mono_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (!over && isFinite(S.timeLimit) && S.timeLimit * KSim.FPS - S.frame <= 30 * KSim.FPS && S.frame % KSim.FPS === 0) KSnd.se('KD_SE_game_19');   // last 30 seconds: a 1 s sound (id 0x19, game_19) is restarted whenever it is not playing (A94)
-    if (isFinite(S.timeLimit) && S.timeLimit > 60 && S.frame === Math.round((S.timeLimit - 60) * KSim.FPS) && window.KText) toast = { t: 2.5 * KSim.FPS, text: KText.clean(KText.group('REMAIN_1MIN')[0]) };   // "1 minute remaining", from FUN_00024xxx: shown when the remaining-frames counter hits 60 s (A93)
+    if (isFinite(S.timeLimit) && S.timeLimit > 60 && S.frame === Math.round((S.timeLimit - 60) * KSim.FPS) && window.KText) toast = { t: 2.5 * KSim.FPS, face: true, text: KText.clean(KText.group('REMAIN_1MIN')[0]) };   // "1 minute remaining", from FUN_00024xxx: shown when the remaining-frames counter hits 60 s (A93)
     if (MODE === 'extra' && !over) exTick();
     if (!over && S.frame / KSim.FPS >= S.timeLimit) { if (MODE === 'timeattack' || MODE === 'extra') { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); } else { lost = true; KSnd.stopBgm(); } }   // time attack: running out the clock is how the run ends (sCheckTime), story: failed (A92)
     // prince walk cycle: advances while there is stick input (4 frames per pose, 2 when dashing)
@@ -628,7 +630,7 @@ function collect(name) {
   if (name.startsWith(EXTRA_ID[PACK - 1]) && !c.extra[PACK - 1]) { c.extra[PACK - 1] = 1; msg = KT.clean(KT.group('UNLOCK_EX')[0] || ''); }
   for (const id of ACH_IDS[PACK - 1]) { if (!name.startsWith(id) || c.ach[id]) continue; if (id === 'GUARD' && STAGE_N !== 18) continue;   // index 34 only counts in stage 17 (0-based), as the original does
     c.ach[id] = 1; if (!msg) msg = KT.clean(KT.group('ACHIEVEMENT')[0] || ''); }
-  if (msg) { colSave(c); toast = { t: 4 * KSim.FPS, text: msg }; }
+  if (msg) { colSave(c); toast = { t: 4 * KSim.FPS, face: true, text: msg }; }
 }
 function saveAlbum() { if (!S.won) return;   // every mode counts: the result builder (FUN_00040e20) calls the album update (FUN_000413b4) whatever the mode (A127). Whether a failed Story run counts is not known, so only finished runs are kept
   const c = colLoad(), a = c.alb[STAGE] = c.alb[STAGE] || {}; for (const k in runItems) a[k] = Math.max(a[k] || 0, runItems[k]); colSave(c); }
