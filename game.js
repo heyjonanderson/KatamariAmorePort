@@ -145,7 +145,7 @@ function makeRippleQuad() {
 // ---- state ----
 let play = null, og = null, mg = null, ou = null, ball = null, S = null;
 const CAM_FRAMES = 32;   // frames a camera row change takes (mission struct word 4, FUN_00010d20)
-const cam = { yaw: 0, ready: false, idx: 0, trans: 0, far: 800, back: 20, up: 8, ahead: 8, lookUp: 0 }; G.cam = cam;   // test hook
+const cam = { yaw: 0, ready: false, idx: 0, trans: 0, far: 800, back: 20, up: 8, ahead: 8, lookUp: 0 }; G.cam = cam; G.ex = () => ({ EX, PAC, GAL });   // test hook
 const keys = {};
 const pads = { S: null };                    // touch stick: {id, ox, oy, x, y}. One floating stick on the left, like the original (A70)
 let touchDash = false, touchFlip = false, lastPick = null;
@@ -160,10 +160,10 @@ let activeCatch = null, paused = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E', extra: 'T' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; KSnd.bgm(MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; if (MODE === 'extra' && EXG === 1) KSnd.stopBgm(); else KSnd.bgm(MODE === 'extra' && EXG === 2 ? 'BGM_ST14' : MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
   { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5], extra: tl[1] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; else if (OPT.minute && (MODE === 'story' || MODE === 'timeattack')) S.timeLimit += 60; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
@@ -305,7 +305,7 @@ function draw(alpha) {
   bindGroup(mg); for (const m of mg.man.models) drawModel(mg, m, M.I());
   // loose objects
   bindGroup(og);
-  for (const o of S.objs) { if (o.state !== 'map' && o.state !== 'fly') continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
+  for (const o of S.objs) { if ((o.state !== 'map' && o.state !== 'fly') || o.stopped) continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
     let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
   // water ripples (A139): the engine draws the GiFx02 quad (100 cm, flat) at the water point with depth test GL_ALWAYS (FUN_00034d58). Lighting state, blend mode and draw order are my guesses: unlit, normal alpha blend, before the ball
@@ -324,13 +324,14 @@ function draw(alpha) {
   G.vp = vp.slice ? vp.slice() : vp;
   { const cw = vp[3] * bpos[0] + vp[7] * bpos[1] + vp[11] * bpos[2] + vp[15]; if (cw > 0.01) G.ballScr = { x: (vp[0] * bpos[0] + vp[4] * bpos[1] + vp[8] * bpos[2] + vp[12]) / cw * 0.5 + 0.5, y: 0.5 - (vp[1] * bpos[0] + vp[5] * bpos[1] + vp[9] * bpos[2] + vp[13]) / cw * 0.5, r: R / cw * 0.5 * h / Math.tan(0.45) / h }; }   // screen position and radius (as a fraction of screen height) for the 2D effects
   // attached objects: world = T(ball) * R * [lrot | lpos]
-  for (const o of S.attached) {
+  const blink = MODE === 'extra' && EXG === 1 && PAC && PAC.blinkOff;   // Pac-Man stunned: ball, prince and models flash, 10 frames on and 10 off (FUN_00050a4c)
+  for (const o of (blink ? [] : S.attached)) {
     const an = S.info[o.n].anim, m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed * 3) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // stuck monos animate at three times the speed (A59)
     const wr = KSim.mmul(S.R, o.lrot), wp = KSim.mvec(S.R, o.lpos);
     drawModel(og, m, objMat(wr, [bpos[0] + wp[0], bpos[1] + wp[1], bpos[2] + wp[2]]));
   }
   // prince, behind the ball (PLACEHOLDER P15: placement, scale, walk cycle order and which way the model faces are guesses)
-  if (ou && S.diam < 100 && (cam.L === undefined || cam.L > R * 3.5)) {   // hidden if the clipped camera is right on top of it
+  if (ou && !blink && S.diam < 100 && (cam.L === undefined || cam.L > R * 3.5)) {   // hidden if the clipped camera is right on top of it
     const yawI = prevYaw + (S.yaw - prevYaw) * alpha, m = ou.mods['GiOujiM' + (S.flipT > 0 ? 0 : [0, 1, 0, 2][ouji.pat % 4])], fx = Math.sin(yawI), fz = Math.cos(yawI);
     let off = KSim.tableParams(S).oujiZ; {   // distance behind the ball centre: the speed table's column 17 (f32OujiOffsetZ), not my R + 1.6 (A89)
       const t = KSim.rayHit(S, pos[0], pos[1] - R * 0.5, pos[2], -fx, 0, -fz, off + 1.5); if (t !== null) off = Math.max(R * 0.6, t - 1.5); }   // do not stand inside a wall behind the ball
@@ -346,6 +347,11 @@ function draw(alpha) {
     bindGroup(ou); if (m) drawModel(ou, m, M.fromR3(Rl, ppos, 1));
   }
   // ball
+  if (blink) return;
+  if (MODE === 'extra' && EXG === 1 && PAC && og) {   // Pac-Man: the Pac-Man model (the powered one while the ghosts are blue) takes the place of the ball core, turned the way the camera looks (FUN_00050c74: yaw + pi; size is my guess, A160)
+    const nm = PAC.fright > 0 ? 'PACMAN3' : 'PACMAN', pi = S.info[nm], pm = pi && og.mods[pi.model];
+    if (pm) { const R0 = S.startDiam / 2, Rd = R0 + (R - R0) * 0.38, yw = prevYaw + (S.yaw - prevYaw) * alpha; bindGroup(og); drawModel(og, pm, M.fromR3(KSim.eulerView(0, yw + Math.PI, 0), bpos, Rd / R0 * (1 + 0.05 * pulse))); return; }
+  }
   gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ball.ibo);
   gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(L.nrm, 3, gl.FLOAT, false, 32, 12); gl.vertexAttribPointer(L.uv, 2, gl.FLOAT, false, 32, 24);
   { const R0 = S.startDiam / 2, Rd = R0 + (R - R0) * 0.38;   // the core is drawn smaller than the physical ball: diameter = start + (d - start) * DispScaleRatio 0.38 (KatamariMain.cppi gYm_KatamariMakeScaleMatrix, drawn with mScaleDisp, A111)
@@ -521,12 +527,13 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.25); last = now; last_dt = dt;
   if (paused) { acc = 0; return; }
   acc += dt; const stepDt = 1 / KSim.FPS;
-  const inp = readInput();
+  const inp = MODE === 'extra' && EXG === 3 && GAL ? galRead() : readInput();
   let n = 0;
   while (acc >= stepDt && n < 5) {
     prevPos = S.pos.slice(); prevYaw = S.yaw;
     const over = S.won || lost;
-    KSim.step(S, over ? { L: 0, R: 0 } : inp); camStep();
+    if (MODE === 'extra' && !over) exPre();
+    KSim.step(S, over ? { L: 0, R: 0 } : MODE === 'extra' && EXG === 3 && GAL ? galInp(inp) : inp); if (MODE === 'extra' && EXG === 3 && GAL) galFix(); camStep();
     let gotPick = false;
     for (const ev of S.events) { if (ev.type === 'spin') KSnd.se('KD_SE_game_09'); else if (ev.type === 'dash') KSnd.se('KD_SE_game_10'); }   // SND_SE_SPIN (id 15) on the stroke that starts the wheel spin, SND_SE_DASH (id 16) on the one that starts the dash (OujiDash.cppi, A101, A120)
     for (const ev of S.events) {                                             // sound cues (guesses: ASSUMPTIONS P23)
@@ -544,7 +551,7 @@ function frame(now) {
       else if (ev.type === 'splash') KSnd.se('KD_SE_game_29');   // SND_SE_SPLASH = id 28 = game_29: first frame in water while flying (KatamariHit.cppi sReaction, A101, A139)   // SND_SE_BRAKE = id 0x12 = game_12 (FUN_0001ee7c, A101)
       else if (ev.type === 'won') { KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // end of a successful run: the end whistle (id 0x51 = game_20); res_00 comes after the King's end dialog (A94)
     }
-    if (gotPick) KSnd.se('KD_SE_game_0' + Math.floor(Math.random() * 3));   // MonoHit: when anything was picked up this frame, one of SND_SE_CATCH0..2 (ids 6 to 8 = game_00 to game_02) at random (A99)
+    if (gotPick && !(MODE === 'extra' && EXG === 1)) KSnd.se(MODE === 'extra' && EXG === 2 ? 'kuma_dm_s_0' + (1 + Math.floor(Math.random() * 3)) : 'KD_SE_game_0' + Math.floor(Math.random() * 3));   // Pac-Man has its own pick-up sounds (FUN_0001446c); Tekken picks one of ids 53 to 55 (MonoHit.cppi SND_SE_TEKKEN07 to 09)   // MonoHit: when anything was picked up this frame, one of SND_SE_CATCH0..2 (ids 6 to 8 = game_00 to game_02) at random (A99)
     if (activeCatch && !over && S.frame >= activeCatch.next) { if (activeCatch.se) KSnd.se('KD2_SE_mono_' + String(activeCatch.se).padStart(2, '0')); activeCatch.next = S.frame + activeCatch.every; }   // the original repeats the object's own sound every N frames while it sits on the ball (MonoMain catchSE)
     if (S.events.some(e => e.type === 'recover')) { prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; toast = { t: 2 * KSim.FPS, text: 'Back on the map' }; }   // fell out of the map: respawn at the recover point (A56)
     if (!over && isFinite(S.timeLimit) && S.timeLimit * KSim.FPS - S.frame <= 30 * KSim.FPS && S.frame % KSim.FPS === 0) KSnd.se('KD_SE_game_19');   // last 30 seconds: a 1 s sound (id 0x19, game_19) is restarted whenever it is not playing (A94)
@@ -564,7 +571,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=39`)).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=39`)).json(); if (MODE === 'extra' && EXG === 1) MAZE = await (await fetch('data/S007/maze.json?v=1')).json(); if (MODE === 'extra' && EXG === 3) GALD = await (await fetch('data/S021/galaga.json?v=1')).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
@@ -649,31 +656,140 @@ function saveRecord() {
 }
 
 // ---- extra stages (A158): S007 Pac-Man, S014 Tekken, S021 Galaga run as ordinary stages with a score instead of a size ----
-// The judgment thresholds, the Tekken score rules and its tables are the binary's (FUN_00041520, FUN_00052bb8, FUN_00052d48, tables at 0x89d00 and 0x89d94). Pac-Man and Galaga point values and the clear rules are my GUESSES (arcade values, A158).
+// The judgment thresholds, the Pac-Man rules (pacman.js, A160) and the Tekken score rules and tables are the binary's (FUN_00041520, FUN_00052bb8, FUN_00052d48, tables at 0x89d00 and 0x89d94).
 const EXG = { S007: 1, S014: 2, S021: 3 }[STAGE] || 0, EXG_T = [null, [2000, 5500, 10000], [2000, 5500, 10000], [15000, 50000, 90000]];
-const PAC_PTS = { COCKIE: 10, PCOCKIE: 50, CHERRY: 100, BERRY: 300, ORANGE: 500, APPLE: 700, MELON: 1000, MRED: 200, MBLUE: 200, MORANGE: 200, MPINK: 200, MIJIKE: 200 };
-const GAL_PTS = { GALAGA: 50, GOEI: 80, BOSSGALAGA: 150, TONBO: 100, GALBOSS: 300 };
 const TEK_CATS = [4, 8, 12, 13, 18, 22], TEK_MIN = [8, 8, 8, 10, 10, 10];   // the code's mono name indexes 5, 9, 0xd, 0xe, 0x13, 0x17 are MONOLIST position + 1 (the Heihachi statue is 0x1a there and 25 in the list): mushroom, grapes, beehive, rabbit, fish, boar
 const TEK_DOUBLE = [[400, 0, 1], [800, 0, 2], [1000, 1, 2], [1600, 1, 3], [1200, 2, 1], [1600, 2, 3], [2000, 2, 5], [2000, 4, 2], [2400, 5, 2], [3200, 5, 1], [4800, 5, 3], [6400, 5, 4]];
 const TEK_TRIPLE = [[1600, 0, 1, 3], [3200, 0, 2, 1], [4000, 1, 2, 3], [4800, 2, 1, 3], [8000, 4, 2, 1], [9600, 5, 2, 1], [12800, 5, 1, 3]];
-let EX = { score: 0, chain: 0, chainT: -999, dots: 0, hit: false, techs: [] };
-function exInit() { EX = { score: 0, chain: 0, chainT: -999, dots: S.objs.filter(o => o.n === 'COCKIE' || o.n === 'PCOCKIE').length, hit: false, techs: [] }; }
-function exHud() { return 'score ' + EX.score + (EXG === 1 ? '   dots left ' + S.objs.filter(o => (o.n === 'COCKIE' || o.n === 'PCOCKIE') && o.state === 'map').length : ''); }
+let EX = { score: 0, chain: 0, chainT: -999, dots: 0, hit: false, techs: [] }, MAZE = null, PAC = null, GALD = null, GAL = null;
+function exInit() { EX = { score: 0, chain: 0, chainT: -999, dots: S.objs.filter(o => o.n === 'COCKIE' || o.n === 'PCOCKIE').length, hit: false, techs: [], waka: false, musicAt: -1 }; if (EXG === 1 && MAZE) pacInit(); if (EXG === 3 && GALD) galInit(); }
+function exHud() { return 'score ' + EX.score + (EXG === 1 ? '   dots left ' + pacRemain() : ''); }
+// ---- Pac-Man (FUN_00050a4c per frame before the step, FUN_00050698 after it, FUN_000508c8 at the start) ----
+// The objects are the stage's own list in the binary's order (Pacman::LAYOUT_*): 0..3 ghosts, 4..7 frightened, 8..11 frightened and flashing, 12..15 eyes, 16..20 fruit, 21..24 power pellets, 25..27 the three Pac-Man models
+const PAC_LAYOUT = ['MRED', 'MBLUE', 'MORANGE', 'MPINK', 'MIJIKE', 'MIJIKE', 'MIJIKE', 'MIJIKE', 'MIJIKEB', 'MIJIKEB', 'MIJIKEB', 'MIJIKEB', 'MIJIKE_EYE', 'MIJIKE_EYE', 'MIJIKE_EYE', 'MIJIKE_EYE', 'APPLE', 'BERRY', 'CHERRY', 'MELON', 'ORANGE', 'PCOCKIE', 'PCOCKIE', 'PCOCKIE', 'PCOCKIE', 'PACMAN', 'PACMAN2', 'PACMAN3'];
+const pacDot = o => (o.n === 'COCKIE' || o.n === 'PCOCKIE');
+function pacRemain() { let n = 0; for (const o of S.objs) if (pacDot(o) && o.state === 'map' && !o.stopped) n++; return n; }   // FUN_00050498: on the map, not hidden, not thrown off and stopped
+function xshow(o, on) { if (o.state === 'map' && !on) { o.state = 'xhid'; o.ppos = null; } else if (o.state === 'xhid' && on) { o.state = 'map'; o.ppos = null; } }   // the original's hidden flag (+0xc): drawn, hit and picked only when clear
+function pacInit() {
+  const O = S.objs; PAC = KPac.create(MAZE, (Math.random() * 4294967296) >>> 0);
+  PAC_LAYOUT.forEach((n, i) => { if (!O[i] || O[i].n !== n) G.err.push('pacman layout ' + i + ' ' + (O[i] && O[i].n)); });
+  for (let i = 0; i < 16; i++) O[i].noPick = i < 4 || i >= 12;   // MonoHit.cppi: ghost objects are only tested while powered, and only the frightened ones are ever shown then
+  for (let i = 16; i <= 20; i++) xshow(O[i], false);
+  for (let i = 25; i <= 27; i++) { O[i].noPick = true; xshow(O[i], false); }   // the models are drawn in place of the ball core (A160)
+  S.pickRaw = true; S.noClimbAll = true;   // sCheckHitMono returns true at once, sCheckClimbWall and sCheckClimbMono return 0 (MonoHit.cppi, KatamariHit.cppi)
+  pacPlace(); EX.musicAt = 4 * KSim.FPS; KSnd.se('s00');   // the intro jingle (id 30, FUN_0002d244 for stage index 6) runs 4 s, then the music (FUN_00045964 id 0x22)
+}
+function pacPlace() {
+  const O = S.objs, sh = KPac.shown(PAC);
+  PAC.ghosts.forEach((g, i) => { const q = KPac.pose(PAC, g); for (const j of [i, i + 4, i + 8, i + 12]) { const o = O[j]; if (o.state !== 'map' && o.state !== 'xhid') continue; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = q.x; o.pos[2] = -q.z; o.rot = KSim.eulerView(0, q.ang, 0); o.top = o.pos[1] + o.hi[1]; } });
+  for (let j = 0; j < 16; j++) xshow(O[j], sh[j]);
+}
+function pacTier(c) { return c < 48 ? 's04' : c < 96 ? 's05' : c < 144 ? 's06' : c < 192 ? 's07' : c < 240 ? 's08' : 's04'; }   // FUN_00045964: one of five loops by the number of pac-dots picked (48, 96, 144, 192, 240); 240 and more falls back to the first
+function pacPlay(n) { if (PAC.mus !== n) { PAC.mus = n; KSnd.bgm(n); } }
+function pacDrop() {   // FUN_00050790: 20% of the attached pac-dots come off, 10 points each are taken off the score
+  const att = S.objs.filter(o => o.n === 'COCKIE' && o.state === 'ball'); if (!att.length) return;
+  const k = KPac.dropCount(att.length); PAC.score -= KPac.PTS[0] * k; let left = k;   // the first one is thrown before the count is tested, so at least one comes off
+  for (const o of att) { o.stopLand = true; KSim.crumbleOne(S, S.attached.indexOf(o), 1.0); KSnd.se('KD_SE_game_05'); if (--left < 1) break; }
+}
+function pacPre() {
+  const O = S.objs, P = PAC;
+  if (Math.abs(Math.trunc(S.pos[2])) <= 16 && (S.pos[0] < -KPac.TUNNEL || S.pos[0] >= KPac.TUNNEL)) {   // the side tunnel: out of one end, in at the other, turned to face the maze (FUN_000509fc)
+    const left = S.pos[0] < 0; S.pos[0] = left ? 140 : -140; S.yaw = left ? -1.57 : 1.57; prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false;
+  }
+  if (P.stun === 0) {
+    P.blinkOff = false; let hit = false;
+    for (let i = 0; i < 4; i++) if (KPac.touch(P, i, S.pos, O[i].pos)) hit = true;
+    if (hit) { KSnd.se('s15'); P.stun = KPac.STUN; S.ctrlOff = KPac.STUN; pacDrop(); }   // id 45; 3 s without control and without pick-ups (Ouji s16NoCtrlTime, KatamariHit.cppi)
+  } else { P.stun--; P.blinkOff = (Math.trunc(P.stun / 10) & 1) === 1; }
+  S.noPick = P.stun > 0;
+  for (let i = 0; i < 4; i++) { const ev = KPac.stepGhost(P, P.ghosts[i]); if (ev === 'home' && P.fright > KSim.FPS) pacPlay('s09'); }   // eyes arrived: the frightened music comes back if more than a second is left (FUN_0005129c, id 0x27)
+  pacPlace();
+  for (let i = 0; i < 4; i++) P.pel[i] = O[21 + i].state !== 'map' && O[21 + i].state !== 'xhid';   // FUN_000504f8
+}
+function pacPost() {
+  const O = S.objs, P = PAC; let fresh = false;
+  for (let i = 0; i < 4; i++) if (!P.pel[i] && O[21 + i].state !== 'map' && O[21 + i].state !== 'xhid') { xshow(O[17 + i], true); KPac.powerUp(P); fresh = true; pacPlay('s09'); }   // FUN_000500a8: a pellet is gone: the matching fruit appears (BERRY, CHERRY, MELON, ORANGE; the APPLE never does), 20 s of fright
+  if (P.stun === 0 && !fresh && KPac.tick(P) === 'end') { P.mus = null; pacPlay(pacTier(P.cookies)); }
+  for (let i = 0; i < 8; i++) { const o = O[4 + i]; if (o.state !== 'ball') continue;   // a frightened ghost was picked up: the bonus, out of the ball, back as eyes (FUN_0005011c)
+    const k = S.attached.indexOf(o); if (k >= 0) S.attached.splice(k, 1); const j = S.ibiList.indexOf(o); if (j >= 0) S.ibiList.splice(j, 1); S.picked--; o.state = 'xhid'; o.ppos = null;
+    KPac.eat(P); P.ghosts[i % 4].st = 2; pacPlay('s10'); }
+  EX.score = P.score + P.mscore;
+  if (EX.musicAt >= 0 && S.frame >= EX.musicAt) { EX.musicAt = -1; pacPlay(pacTier(P.cookies)); }
+}
+function exPre() { if (EXG === 1 && PAC) pacPre(); if (EXG === 3 && GAL) galPre(); }
 function exPick(name) {
-  if (EXG === 1) EX.score += PAC_PTS[name] || 0;
-  else if (EXG === 3) { EX.chain = S.frame - EX.chainT <= KSim.FPS ? EX.chain + 1 : 1; EX.chainT = S.frame; EX.score += (GAL_PTS[name] || 0) * EX.chain; }   // one go = several in about a second (GUESS: each catch counts as many times as the catches in the chain)
+  if (EXG === 1 && PAC) {
+    const k = KPac.NAMES.indexOf(name); if (k >= 0) PAC.score += KPac.PTS[k];   // FUN_0005054c
+    if (name === 'COCKIE') { PAC.cookies++; KSnd.se(EX.waka ? 's12' : 's11'); EX.waka = !EX.waka; if (PAC.fright === 0) pacPlay(pacTier(PAC.cookies)); }   // FUN_0001446c: ids 0x29 and 0x2a alternate; the music steps up with the count
+    else if (k >= 2) KSnd.se('s03');   // fruit: id 0x21
+  }
 }
 function tekScore() {   // ExTekken::calcScore
   const keys = Object.keys(play.info), cnt = [0, 0, 0, 0, 0, 0]; for (const o of S.attached) { const k = TEK_CATS.indexOf(keys.indexOf(o.n)); if (k >= 0) cnt[k]++; }
   const t = []; for (let n = 0; n < 3; n++) { let best = -1, run = 0; for (let i = 0; i < 6; i++) { if (cnt[i] >= run && cnt[i] >= TEK_MIN[i]) { best = i; run = cnt[i]; } } if (best < 0) break; t.push(best); cnt[best] = 0; }
   let sc = 0; for (const k of t) sc += Math.floor(2 ** k * 200);
   const tri = TEK_TRIPLE.find(r => r[1] === t[0] && r[2] === t[1] && r[3] === t[2]);
-  if (tri) sc += tri[0]; else { const d = TEK_DOUBLE.find(r => r[1] === t[0] && r[2] === t[1]); if (d) sc += d[0]; }
-  EX.techs = t; return sc;
+  const d = tri ? null : TEK_DOUBLE.find(r => r[1] === t[0] && r[2] === t[1]); if (tri) sc += tri[0]; else if (d) sc += d[0];
+  EX.techs = t; EX.bonus = tri ? 3 : d ? 2 : 0; return sc;
+}
+// ---- Galaga (S021): the enemy flow is galaga.js (A161). The monos are the T-set instances in the binary's order: 0 to 19 BOSSGALAGA, 20 to 27 GALBOSS, 28 to 55 GOEI, 56 to 67 TONBO, 68 to 119 GALAGA, 120 to 123 ENEMYSHOT, 124 on beam and capture models, which are never shown here
+function galInit() {
+  const O = S.objs; if (O.length < 149) { G.err.push('galaga: ' + O.length + ' monos'); return; }
+  for (let i = 0; i < O.length; i++) { O[i].noPick = i >= 120; xshow(O[i], false); }
+  S.pickRaw = true; S.noClimbAll = true;
+  const ctx = {
+    show: (i, on) => xshow(O[i], on),
+    place: (i, x, z, a) => { const o = O[i]; if (o.state !== 'map' && o.state !== 'xhid') return; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, a, 0); },
+    att: i => O[i].state === 'ball',
+    drop: f => galDrop(f)
+  };
+  GAL = KGal.create(GALD, ctx, 1); EX.started = false;
+}
+function galRead() {   // OujiCtrlGalaga_GetMoveParam: only left and right, a dead zone of 0.3, power (|input| - 0.3) / 0.7, no dash and no U-turn
+  let x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0); const p = pads.S; if (p) x = (p.x - p.ox) / PAD_R; x = Math.max(-1, Math.min(1, x));
+  const pw = Math.abs(x) < 0.3 ? 0 : (Math.abs(x) - 0.3) / 0.7;
+  return { L: pw, R: pw, side: pw ? Math.sign(x) : 0, pw, dash: false, flip: false };
+}
+function galInp(inp) { if (inp.side) S.yaw = inp.side > 0 ? Math.PI / 2 : -Math.PI / 2; return { fwd: inp.pw, turn: 0, dash: false, flip: false }; }   // the ball walks sideways: the prince turns to the side for the step, then the camera yaw (0) comes back
+function galFix() {   // FUN_00055338: x between -70 and 70, z fixed at -60
+  S.yaw = 0; if (S.pos[0] > KGal.PLAYER_X) { S.pos[0] = KGal.PLAYER_X; if (S.v[0] > 0) S.v[0] = 0; } else if (S.pos[0] < -KGal.PLAYER_X) { S.pos[0] = -KGal.PLAYER_X; if (S.v[0] < 0) S.v[0] = 0; }
+  S.pos[2] = -60; S.v[1] = 0;
+}
+function galScore() { const keys = Object.keys(play.info); return KGal.score(GAL, S.attached.filter(o => o.state === 'ball').map(o => keys.indexOf(o.n) + 1)); }
+function galDrop(f) {   // FUN_00054618: a shot throws off 20% of what is attached (at least one), picked at random; the thrown enemies are out of the game (they stop, and a stopped mono is not displayed)
+  const att = S.attached.filter(o => o.state === 'ball' && S.objs.indexOf(o) < 143); const n = att.length; if (!n) return;
+  let k = Math.max(Math.floor(n * f), 1); for (let i = att.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [att[i], att[j]] = [att[j], att[i]]; }
+  for (const o of att.slice(0, k)) { const sl = GAL.slots.find(q => q.mono === S.objs.indexOf(o)); if (sl) { sl.dropped = true; sl.lives = 0; } o.stopLand = true; KSim.crumbleOne(S, S.attached.indexOf(o), 1.0); }
+}
+function galPre() {
+  if (!EX.started) { EX.started = true; KSnd.se('galaga_11'); }   // stage intro, id 0x43
+  KGal.step(GAL, { x: S.pos[0], z: KGal.PLAYER_Z, diam: S.diam });
+  for (const e of GAL.events.splice(0)) {
+    if (e.t === 'dive') KSnd.se('galaga_19'); else if (e.t === 'shot') KSnd.se('galaga_04'); else if (e.t === 'hit') KSnd.se('galaga_23');   // ids 0x4b, 0x3c, 0x4f
+    else if (e.t === 'stage' && e.stage === 2) KSnd.se('galaga_13'); else if (e.t === 'stage' && e.stage === 3) KSnd.se('galaga_20');   // ids 0x45, 0x4c
+    else if (e.t === 'clear' && !EX.done) { EX.done = true; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }
+  }
+}
+function tekSeq() {   // FUN_00032880: state 2 waits for kuma_down (id 46) and 31 frames (1 when there is no trick), state 3 plays one 15 frame pulse per step (a 60 frame one for the fourth) with the sounds of ids 47 to 52, then the run ends
+  const q = EX.seq, tc = EX.techs.length, b = EX.bonus || 0;
+  if (q.st === 2) {
+    if (++q.c < 29 || q.c < q.dur) return;   // kuma_down is 0.94 s = 29 frames
+    const n = Math.max(tc, 1) + (b > 0 ? b - 1 : 0); q.pd = n === 1 ? 1 : n + 1; q.st = 3; q.i = 0; q.p = 15;
+    KSnd.se(EX.score ? 'kuma_waza01' : 'kuma_dm_l_02'); return;
+  }
+  if (q.st !== 3 || --q.p > 0) return;
+  q.p = 15; const i0 = q.i++;
+  if (q.i >= q.pd) { q.st = 4; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); return; }
+  const at = b === 2 ? 'kuma_at_m_02' : null;
+  const snd = i0 === 0 ? 'kuma_waza02' : i0 === 1 ? (tc === 2 ? at : 'kuma_waza03') : i0 === 2 ? (b === 3 ? 'kuma_at_m_03' : at) : null;
+  if (snd) KSnd.se(snd);
+  if (i0 === 3) q.p = 60;
 }
 function exTick() {
-  if (EXG === 2 && !EX.hit) { const R = S.diam / 2; for (const o of S.objs) if (o.n === 'HEIHACHI' && o.state === 'map' && Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) <= R + o.maxlen) { EX.hit = true; EX.score = tekScore(); S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); break; } }   // touching the statue ends the run and scores the trick (FUN_00014c.. MonoHit, mini-game 2, name index 0x1a)
-  if (EXG === 1 && EX.dots && !S.objs.some(o => (o.n === 'COCKIE' || o.n === 'PCOCKIE') && o.state === 'map')) { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }   // every pac-dot gone: level clear (GUESS)
+  if (EXG === 2 && !EX.hit) { const R = S.diam / 2; for (const o of S.objs) if (o.n === 'HEIHACHI' && o.state === 'map' && Math.hypot(o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]) <= R + o.maxlen) { EX.hit = true; EX.score = tekScore(); EX.seq = { c: 0, st: 2, dur: EX.techs.length ? 31 : 1, i: 0, p: 15, pd: 0 }; KSnd.se('kuma_down'); break; } }   // touching the statue (mono name index 0x1a, MonoHit) sets clearFlag 1 and plays id 46; the run is over when the trick popup (FUN_00032880) reaches clearFlag 4 (A161)
+  if (EXG === 2 && EX.seq) tekSeq();
+  if (EXG === 3 && GAL) EX.score = galScore();
+  if (EXG === 1 && PAC) { pacPost(); if (EX.dots && pacRemain() === 0) { S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); } }   // Game::sCheck1P: no pac-dot or pellet left on the map is a success (GameClear.cppi)
 }
 
 // ---- exact size mode ----

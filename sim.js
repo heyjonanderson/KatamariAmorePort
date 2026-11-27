@@ -710,7 +710,7 @@
       else if (o.flyT > CR.flyMax || o.pos[1] < -5000) { o.state = 'gone'; }   // fell off the map
     }
   }
-  function land(o) { o.state = 'map'; o.rot = o.rotHome; o.top = o.pos[1] + o.hi[1]; o.ppos = null; o.vel = null; }
+  function land(o) { o.state = 'map'; o.rot = o.rotHome; o.top = o.pos[1] + o.hi[1]; o.ppos = null; o.vel = null; if (o.stopLand) o.stopped = true; }   // stopLand: Pac-Man and Galaga set u8Stop on a thrown mono once it has stopped bouncing (MonoSub.cppi)
   // MonoConverge: a lump dragging on the ground pulls the objects near it in toward the centre, harder the faster the ball goes
   function converge(S, R, vmax) {
     if (!S.lumps.length || S.lift < 1e-3) return;
@@ -989,8 +989,8 @@
       let ok1 = false;
       if (walls.length === 1) {                                                        // more than one wall face at once: no climb
         const w = walls[0], free = !!(w.o && w.o.top <= bottom + CW.distRatio * S.diam && S.grounded);   // sCheckClimbMono: the object's top is within reach
-        let can = cw.on || free;
-        if (!can) can = S.grounded && cw.forbid === 0 && !S.rampLift;                  // not forbidden, not flying, not on a slope (HitEdge: below, ray mode only)
+        let can = (cw.on || free) && !S.noClimbAll;
+        if (!can && !S.noClimbAll) can = S.grounded && cw.forbid === 0 && !S.rampLift;                  // not forbidden, not flying, not on a slope (HitEdge: below, ray mode only)
         if (S.ray && S.edgeHit && !free) can = false;                                   // sCheckClimbWall: KSTAT HitEdge (an edge ray hit something) refuses the climb unless the object is small enough to climb (sCheckClimbMono)
         if (noClimb && !free) can = false;                                              // DisableClimb: only a mono small enough to climb (sCheckClimbMono) still gets through
         if (can) {
@@ -1066,10 +1066,10 @@
     // pickup
     const cdm = S.diam * 10;
     for (const o of S.objs) {
-      if (o.state !== 'map' || cdm < o.catchMm || (o.hitOff && o.hitOff > S.frame)) continue;
+      if (o.state !== 'map' || o.noPick || o.stopped || S.noPick || cdm < o.catchMm || (o.hitOff && o.hitOff > S.frame)) continue;   // extra stages: noPick (ghosts, Pac-Man models), stopped (thrown off and lying still, MonoSub.cppi), S.noPick (Pac-Man stunned, KatamariHit.cppi)
       const v = [o.pos[0] - S.pos[0], o.pos[1] - S.pos[1], o.pos[2] - S.pos[2]];
       if (Math.hypot(v[0], v[1], v[2]) > R + o.maxlen) continue;            // broad phase: ball radius + object bounding radius >= distance (gYm_MonoHitCheck)
-      if (!engineHit(S, o, v, R)) continue;                                 // sCheckHitMono: the engine's pickup test (A29)
+      if (!S.pickRaw && !engineHit(S, o, v, R)) continue;                   // sCheckHitMono: the engine's pickup test (A29). Pac-Man: returns true at once (MonoHit.cppi, A160)
       const Rt = mtr(S.R), lp = mvec(Rt, v);                                // relative position kept as it was at pickup, no clamping (gYm_MonoHitSetInfo)
       o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); o.near = nearIbitsu(S, o); S.attached.push(o); S.picked++; if (S.info[o.n].ibi) S.ibiList.push(o);
       const add = o.boxvol * o.addRatio * addRatio(S); o.addVol = add; o.crumbleVol = add; if (!o.rotHome) o.rotHome = o.rot; grow(S, add);
@@ -1089,6 +1089,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitFloorAt, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { crumbleOne, holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitFloorAt, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

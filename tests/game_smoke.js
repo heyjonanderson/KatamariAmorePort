@@ -30,6 +30,8 @@ const ctx = { document: doc, window: null, console, setTimeout, clearTimeout, pe
 ctx.window = ctx; ctx.window.addEventListener = (n, f) => { listeners[n] = f; }; ctx.window.innerWidth = 800;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'sim.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'pacman.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'galaga.js'), 'utf8'), ctx);
 // gl constants used as props on the proxy return functions; make them numbers
 for (const k of ['VERTEX_SHADER','FRAGMENT_SHADER','ARRAY_BUFFER','ELEMENT_ARRAY_BUFFER','STATIC_DRAW','TEXTURE_2D','RGBA','UNSIGNED_BYTE','UNSIGNED_SHORT','FLOAT','TRIANGLES','TEXTURE0','LINEAR','LINEAR_MIPMAP_LINEAR','REPEAT','CLAMP_TO_EDGE','TEXTURE_MIN_FILTER','TEXTURE_MAG_FILTER','TEXTURE_WRAP_S','TEXTURE_WRAP_T','UNPACK_FLIP_Y_WEBGL','COLOR_BUFFER_BIT','DEPTH_BUFFER_BIT','DEPTH_TEST','COMPILE_STATUS','LINK_STATUS']) glp[k] = 1;
 vm.runInContext(fs.readFileSync(path.join(root, 'game.js'), 'utf8'), ctx);
@@ -37,7 +39,9 @@ vm.runInContext(fs.readFileSync(path.join(root, 'game.js'), 'utf8'), ctx);
   for (let i = 0; i < 100 && !(ctx.window.__kg && ctx.window.__kg.ready); i++) await new Promise(r => setTimeout(r, 20));
   const g = ctx.window.__kg; if (!g.ready) { console.log('FAIL not ready', g.err); process.exit(1); }
   listeners.keydown && listeners.keydown({ code: 'ArrowUp', preventDefault() {} }); listeners.keydown && listeners.keydown({ code: 'ShiftLeft', preventDefault() {} });
-  let t = 0; for (let i = 0; i < 300; i++) { t += 16.7; raf(t); }
+  let t = 0; const step = n => { for (let i = 0; i < n; i++) { t += 1000 / 30 + 0.01; raf(t); } };
+  if (process.env.SCRIPT) { await require(path.resolve(process.env.SCRIPT))({ g, ctx, step, K, root }); return; }   // a scenario script gets the running game
+  for (let i = 0; i < 300; i++) { t += 16.7; raf(t); }
   const S = g.S; const nan = S.pos.some(v => !isFinite(v));
   console.log('frames stepped', g.frames, 'pos', S.pos.map(v => v.toFixed(1)).join(','), 'speed', S.speed.toFixed(2), 'drawElements calls', calls.drawElements, 'tris/frame', g.tris, 'errors', JSON.stringify(g.err));
   if (nan || g.err.length || !calls.drawElements || g.frames < 100) { console.log('FAIL'); process.exit(1); }
