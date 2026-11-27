@@ -7,6 +7,8 @@
   const TYPE_VAL = { 1: 100, 2: 160, 3: 400, 4: 100, 5: 320 };
   const PLAYER_Z = 60, PLAYER_X = 70, BULLET_SPEED = 2, BULLET_END_Z = 180, FIRE_Z = [0, 20], FIRE_DIAM = 16, HIT_K = 0.75, DROP = 0.2;
   const WINDOW = [0, 20];
+  // tractor beam (FUN_000543f0, FUN_00054aa0, FUN_00054b48, FUN_00053cf4): a boss on path 0x19 holds still at waypoint 7 for 240 ticks and the beam is on while 'rem' is below 210
+  const BEAM_PATH = 0x19, BEAM_IDX = 8, BEAM_REM = 210, CAP_DX = 10, CAP_TAKE = 0.5, POOLMAP = [3, 5, 2, 4, 1], REL_KEEP = 0.4, REL_RET = 1.4, TRACTOR_DZ = 24, CAPMA_DZ = -16;   // POOLMAP: virtual count slot -> mono type (the order of DAT_0009a058 and DAT_0009a070)
   // formation (FUN_00052f5c): slot index -> [x, z]
   const FORM = []; for (let i = 0; i < 4; i++) FORM[i] = [(i - 1.5) * 12, -120]; for (let k = 0; k < 8; k++) { FORM[4 + k] = [(k - 3.5) * 12, -100]; FORM[12 + k] = [(k - 3.5) * 12, -80]; } for (let k = 0; k < 10; k++) { FORM[20 + k] = [(k - 4.5) * 12, -60]; FORM[30 + k] = [(k - 4.5) * 12, -40]; }
 
@@ -46,7 +48,7 @@
   function create(D, ctx, seed) {
     let s = (seed >>> 0) || 1;
     const rng = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const G = { D, ctx, rng, stage: 0, timers: [], slots: [], bullets: [], groups: [], bonus: 0, pat: 0, par: 0, events: [], frame: 0 };
+    const G = { D, ctx, rng, stage: 0, timers: [], slots: [], bullets: [], groups: [], bonus: 0, pat: 0, par: 0, events: [], frame: 0, beams: [], pool: [0, 0, 0, 0, 0], lockX: null };
     initStage(G, 1); return G;
   }
   const emptyGroup = () => ({ monos: [], kind: -1, count: 0, remaining: 0 });
@@ -55,6 +57,9 @@
     for (let i = 0; i < 10; i++) G.groups.push(emptyGroup());
     for (let i = 0; i < 4; i++) G.bullets.push({ on: false, x: 0, z: 0, tx: 0, tz: 0, mono: 120 + i });
     let beam = 0;
+    G.beams = []; G.pool = [0, 0, 0, 0, 0];   // FUN_00054a40 clears the four beams and the virtual counts at every stage
+    for (let i = 0; i < 4; i++) G.beams.push({ on: false, cap: false, t: 0, x: 0, z: 0, boss: -1, list: [], types: [], cnt: [0, 0, 0, 0, 0] });
+    if (G.ctx.beamOff) G.ctx.beamOff(); for (let i = 0; i < 4; i++) G.ctx.cap && G.ctx.cap(i, 0, 0, 0);
     for (let i = 0; i < 40; i++) {
       const row = rows[i];
       G.slots.push({ i, st: 0, lives: 3, row, pi: null, x: 1000, z: 1000, ang: 0, ox: 0, oz: 0, f65: 1, stage0: st - 1, grp: i >> 3, beam: row[6] === 0 ? beam++ : -1, dropped: false, mono: row[7] });
@@ -100,8 +105,7 @@
     }
   }
   function beamDive(G, sl) {   // FUN_000538c4: whether this boss goes on the beam path on this pass
-    const t = G.D.t89e20, base = (G.stage * 4 + 2) ;
-    return 4 - sl.lives === t[base + (sl.beam & 3)];
+    return 4 - sl.lives === G.D.t89e28[G.stage * 4 + (sl.beam & 3)];   // table at 0x89e28, one row of four per stage (stage 1: 1 2 1 2, stage 2: none, stage 3: 1 2 1 2)
   }
   function groupAdd(G, monos, kind) {
     const g = G.groups.find(q => q.count === 0); if (!g) return;
@@ -135,9 +139,43 @@
     G.events.push({ t: 'dive' });   // sound id 0x4b
   }
 
+
+  // ---- tractor beam and capture ----
+  const shuf = (G, a) => { for (let k = 0; k < 100 && a.length > 1; k++) { const i = Math.floor(G.rng() * a.length), j = Math.floor(G.rng() * a.length); const t = a[i]; a[i] = a[j]; a[j] = t; } };
+  const capScale = t => t < 60 ? 0 : t >= 180 ? 0.5 : Math.floor((t - 60) / 30) / 10 + 0.1;   // FUN_0005413c: the captured ball (CAPTAMA) hanging behind the boss grows 0.1 to 0.5 in steps of 0.1 every 30 ticks from tick 60 of the beam
+  function startBeam(G, b, sl) { b.on = true; b.cap = false; b.frz = null; b.t = 0; b.x = sl.x; b.z = sl.z; b.boss = sl.mono; G.ctx.beamPlace(b.x, b.z); G.events.push({ t: 'beam' }); }   // FUN_000543f0: the beam is put on the boss, sound id 0x3d
+  function stopBeam(G, b) { b.on = false; b.cap = false; b.frz = null; G.ctx.beamOff(); }
+  function capture(G, b) {   // FUN_00054aa0 then FUN_00054b48 with 0.5: half of what is on the ball (rounded up) goes into the beam's list; the virtual count makes up the same share
+    const ctx = G.ctx; b.cap = true; ctx.tractor(b.x, b.z + TRACTOR_DZ);
+    const att = ctx.attached(); shuf(G, att);
+    const nA = att.length, pc = G.pool.reduce((a, c) => a + c, 0), c1 = Math.ceil(nA * CAP_TAKE), T = Math.ceil((pc + nA) * CAP_TAKE);
+    for (let k = 0; k < c1 && k < nA; k++) { const q = att[k]; ctx.takeOff(q.mono); if (b.list.length < 0x77) { b.list.push(q.mono); b.types.push(q.type); } }
+    let r = T - Math.min(c1, nA); const per = Math.trunc(r / 5), take = [0, 0, 0, 0, 0];
+    for (let k = 0; k < 4; k++) { take[k] = Math.min(G.pool[k], per); r -= take[k]; }
+    take[4] = Math.max(0, r);   // the fifth count takes whatever is left, so it can go below zero
+    for (let k = 0; k < 5; k++) { b.cnt[k] += take[k]; G.pool[k] -= take[k]; }
+    G.events.push({ t: 'capture' });
+  }
+  function rescue(G, b, idx) {   // FUN_00053ca0 and FUN_00053cf4: a boss that is picked up gives its list back at the ball; the virtual counts grow by 40% of the list and 140% of what the beam took from them
+    if (b.list.length === 0) return; const ctx = G.ctx, n = [0, 0, 0, 0, 0];
+    ctx.release(b.list); for (const ty of b.types) { const k = POOLMAP.indexOf(ty); if (k >= 0) n[k]++; }
+    for (let k = 0; k < 5; k++) { G.pool[k] += Math.ceil(n[k] * REL_KEEP) + Math.ceil(b.cnt[k] * REL_RET); b.cnt[k] = 0; }
+    b.list = []; b.types = []; ctx.cap(idx, 0, 0, 0); G.events.push({ t: 'rescue' });
+  }
+  const virt = (G, volOf) => { let v = 0; for (let k = 0; k < 5; k++) v += volOf(POOLMAP[k]) * G.pool[k]; return Math.max(0, v); }   // FUN_000533b8, times the add-volume ratio of the table at the ball's size (host)
+
   // ---- one frame (FUN_000553a0, after the host has clamped the ball) ----
   function step(G, ball) {   // ball: { x, z, diam } in the enemy frame (z = PLAYER_Z)
     const D = G.D, ctx = G.ctx; G.frame++; if (G.stage >= 4) return;
+    G.lockX = null; let locked = false;
+    for (let k = 0; k < 4; k++) {   // the beams: model placed, capture tested (|beam x - ball x| < 10 and something on the ball), ball held at the beam's x while captured
+      const b = G.beams[k];
+      if (b.on) { ctx.beamPlace(b.x, b.z); b.t++; }
+      const inb = b.on && !b.cap && Math.abs(b.x - ball.x) < CAP_DX;
+      if (inb && ctx.attCount() > 0) capture(G, b);
+      else if (inb && b.frz == null) b.frz = ball.x;   // FUN_00025bdc runs even with nothing on the ball: the controls stay off until the beam ends (FUN_00025bc0)
+      if (b.cap) { G.lockX = b.x; locked = true; } else if (b.on && b.frz != null) { G.lockX = b.frz; locked = true; }
+    }
     // shots
     for (const b of G.bullets) {
       if (!b.on) continue;
@@ -159,21 +197,29 @@
           const f = FORM[row[5]], d = Math.hypot(sl.x - f[0], sl.z - f[1]);
           if (d < 3) { sl.x = f[0]; sl.z = f[1]; sl.st = 3; } else { sl.x += 3 * (f[0] - sl.x) / d; sl.z += 3 * (f[1] - sl.z) / d; }
           sl.ang = 0; ctx.place(sl.mono, sl.x, sl.z, 0);
+          if (row[6] === 0 && sl.beam >= 0 && sl.beam < 4 && G.beams[sl.beam].list.length) ctx.cap(sl.beam, sl.x, sl.z + CAPMA_DZ, 0.5);   // FUN_00054048
         } else if (sl.st === 4) {   // FUN_0005413c: the dive path
           pathStep(D, sl.pi); const q = place(sl.pi, 0, row[4] & 1, (row[4] >> 8) & 1, D.diveOff[sl.doff], [sl.ox, sl.oz]);
           sl.x = q.x; sl.z = q.z; sl.ang = q.ang; ctx.place(sl.mono, sl.x, sl.z, sl.ang);
+          if (row[6] === 0 && sl.beam >= 0 && sl.beam < 4) {   // FUN_0005413c: the boss on the beam path puts the beam on and takes it off, and carries the captured ball
+            const b = G.beams[sl.beam], on = sl.pi.id === BEAM_PATH && sl.pi.idx === BEAM_IDX && sl.pi.rem < BEAM_REM;
+            if (!b.on) { if (on) startBeam(G, b, sl); } else if (!on) stopBeam(G, b);
+            if (b.list.length) ctx.cap(sl.beam, sl.x, sl.z + CAPMA_DZ, capScale(b.t));
+          }
           if (!sl.pi.on) {
             if (sl.lives > 0) sl.lives--;
-            if (row[5] >= 0 && sl.lives >= 1) { sl.st = 5; dissolve(G, sl.mono); if (sl.pi.id !== 0x19) sl.z = -180; }
+            if (row[5] >= 0 && sl.lives >= 1) { sl.st = 5; dissolve(G, sl.mono); if (sl.pi.id !== 0x19) sl.z = -180; else if (row[6] === 0 && sl.beam >= 0 && sl.beam < 4 && G.beams[sl.beam].list.length) { ctx.cap(sl.beam, sl.x, sl.z + CAPMA_DZ, 0.1); G.events.push({ t: 'beamBack' }); } }
             else { sl.st = 0; sl.lives = 0; ctx.show(sl.mono, false); }
           }
         }
       }
       // shots: a diving enemy that is not a boss and is in the window fires at the ball while a shot is free (FUN_0005452c, FUN_00054558)
-      if (!att && !sl.dropped && sl.lives > 0 && ball.diam >= FIRE_DIAM && sl.st === 4 && sl.f65 === 0 && sl.z >= WINDOW[0] && sl.z <= WINDOW[1] && row[6] !== 0) {
+      if (!locked && !att && !sl.dropped && sl.lives > 0 && ball.diam >= FIRE_DIAM && sl.st === 4 && sl.f65 === 0 && sl.z >= WINDOW[0] && sl.z <= WINDOW[1] && row[6] !== 0) {
         const b = G.bullets.find(q => !q.on);
         if (b) { b.on = true; b.x = sl.x; b.z = sl.z; b.tz = BULLET_END_Z; b.tx = sl.x + (ball.x - sl.x) * (BULLET_END_Z - sl.z) / (ball.z - sl.z); ctx.show(b.mono, true); ctx.place(b.mono, b.x, b.z, 0); G.events.push({ t: 'shot' }); }
       }
+      if (att && !sl.wasAtt && row[6] === 0 && sl.beam >= 0 && sl.beam < 4) { const b = G.beams[sl.beam]; if (b.on) stopBeam(G, b); rescue(G, b, sl.beam); }   // a boss picked up while it holds captured things
+      sl.wasAtt = att;
       if (att && (sl.st === 1 || sl.st === 4)) G.bonus += groupRemove(G, sl.mono);   // FUN_00053c5c: the last member of a dive group picked up pays the group bonus
       if (!att && sl.lives > 0) alive++;
       if (att && sl.st !== 0 && sl.st !== 3 && sl.st !== 99) { /* an attached enemy is out of the game */ }
@@ -197,6 +243,6 @@
   // FUN_0005328c: score = tier(100 * attached) + sum of the attached enemies' values + the group bonuses
   function tier(n) { const v = n * 100; return v < 2400 ? 1000 : v < 6000 ? 2000 : v < 9000 ? 4000 : v < 12000 ? 8000 : v < 14400 ? 16000 : v < 16800 ? 32000 : 64000; }
   function score(G, types) { let sum = 0, n = 0; for (const t of types) { if (TYPE_VAL[t]) { sum += TYPE_VAL[t]; n++; } } return tier(n) + sum + G.bonus; }
-  const API = { FPS, FORM, TYPE_VAL, PLAYER_Z, PLAYER_X, HIT_K, DROP, pathInit, pathStep, place, create, initStage, step, startDive, selectDive, groupRemove, tier, score };
+  const API = { FPS, FORM, TYPE_VAL, PLAYER_Z, PLAYER_X, HIT_K, DROP, pathInit, pathStep, place, create, initStage, step, startDive, selectDive, groupRemove, tier, score, virt, capScale, POOLMAP };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KGal = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

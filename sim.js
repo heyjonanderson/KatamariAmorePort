@@ -470,7 +470,7 @@
   const addRatio = S => S.addRows.length ? interpRows(S.addRows, S.diam, 1) : 1;      // A-VR: table is (diameter, ratio) pairs
 
   function grow(S, add) {
-    const r0 = radius(S); S.volume += add; S.diam = diamFromVol(S.volume);
+    const r0 = radius(S); S.volume += add; S.diam = diamFromVol(S.volume + (S.vvol || 0));   // S.vvol: Galaga's virtual volume of captured enemies (FUN_0001de50, A164)
     if (S.diam > 99900) S.diam = 99900;            // KatamariMain.cppi: limiter at __M__(999) = 999 m (was wrongly 999 cm, A47)
     S.pos[1] += radius(S) - r0;                       // keep the bottom where it was
   }
@@ -687,6 +687,12 @@
       if (o.crumbleVol <= 0) { const k = S.attached.indexOf(o); if (k >= 0) { crumbleOne(S, k, 1.0); S.crumbled++; S.events.push({ type: 'crumble', n: 1 }); } }
       break;
     }
+  }
+  function setVvol(S, v) { if (v === (S.vvol || 0)) return; const r0 = radius(S); S.vvol = v; S.diam = diamFromVol(S.volume + v); if (S.diam > 99900) S.diam = 99900; S.pos[1] += radius(S) - r0; }   // the size is worked out from the real volume plus the virtual one
+  function takeOff(S, i) {                                   // Galaga tractor beam (FUN_00054b48): the object leaves the ball and its volume comes off, but it is not thrown
+    const o = S.attached[i]; S.attached.splice(i, 1);
+    const k = S.ibiList.indexOf(o); if (k >= 0) S.ibiList.splice(k, 1);
+    grow(S, -Math.min(o.addVol, S.volume * 0.5)); S.picked--; o.ppos = null; o.path = null; o.vel = null; return o;
   }
   function crumbleOne(S, i, power) {                         // sCrumbleOneMono: volume comes off, the object leaves the ball and is thrown away from the centre
     const o = S.attached[i]; S.attached.splice(i, 1);
@@ -1089,6 +1095,6 @@
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
-  const API = { crumbleOne, holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitFloorAt, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
+  const API = { crumbleOne, takeOff, setVvol, holdInWall, HOLD, cullStuck, waterAt, buildWater, engineHit, buildGround, splineAt, moveMonos, animMonos, FPS, CLIMB, supportAt, create, step, boxClosest, rayHit, segHit, hitFloorAt, rayContacts, hitWalls, tank, readSticks, readCtrl, padSticks, tableParams, lumpsOf, lumpMult, cameraRow, cameraParams, radius, maxSpeed, gravity, groundAt, diamFromVol, sphereVol, mmul, mvec, mtr, eulerView, interpRows, pairs, I3 };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.KSim = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

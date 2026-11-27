@@ -1,6 +1,8 @@
 // Galaga port logic test: paths end where the formation is, stages run through, scoring matches the binary's tiers
 const fs = require('fs'), assert = require('assert'), K = require('../galaga.js'), D = JSON.parse(fs.readFileSync(__dirname + '/../data/S021/galaga.json', 'utf8'));
-const mk = () => { const log = { shown: {}, pos: {}, dropped: 0 }; return { log, ctx: { show: (i, on) => { log.shown[i] = on; }, place: (i, x, z, a) => { log.pos[i] = [x, z, a]; }, att: i => !!(log.att && log.att.has(i)), drop: f => { log.dropped++; } } }; };
+const mk = () => { const log = { shown: {}, pos: {}, dropped: 0 }; return { log, ctx: { show: (i, on) => { log.shown[i] = on; }, place: (i, x, z, a) => { log.pos[i] = [x, z, a]; }, att: i => !!(log.att && log.att.has(i)), drop: f => { log.dropped++; },
+  beamPlace: (x, z) => { log.beam = [x, z]; log.beamOn = true; }, beamOff: () => { log.beamOn = false; }, tractor: () => { log.tractor = true; }, cap: (i, x, z, s) => { log.cap = [i, x, z, s]; },
+  attCount: () => (log.attList || []).length, attached: () => (log.attList || []).slice(), takeOff: m => { log.took = (log.took || []).concat(m); log.attList = (log.attList || []).filter(q => q.mono !== m); }, release: l => { log.released = l.slice(); } } }; };
 // 1. every entry path of stage 1 ends close to a formation slot after the walk (state 2 then closes the gap)
 {
   const { ctx, log } = mk(); const G = K.create(D, ctx, 7); let formed = 0, dived = 0, shots = 0, stage1Frames = 0;
@@ -25,4 +27,31 @@ assert.strictEqual(K.tier(0), 1000); assert.strictEqual(K.tier(23), 1000); asser
 { const { ctx } = mk(); const G = K.create(D, ctx, 1); G.bonus = 800; assert.strictEqual(K.score(G, [3, 1, 2]), 1000 + 400 + 100 + 160 + 800); }
 // 4. group bonus: the last member of a dive group picked up pays t89e20[kind]
 { const { ctx } = mk(); const G = K.create(D, ctx, 1); G.groups[0] = { monos: [5, 6, 7], kind: 0, count: 3, remaining: 3 }; assert.strictEqual(K.groupRemove(G, 5), 0); assert.strictEqual(K.groupRemove(G, 6), 0); assert.strictEqual(K.groupRemove(G, 7), 800); assert.strictEqual(G.groups[0].count, 0); }
+
+// 4. tractor beam: a boss on path 0x19 puts the beam on in the hold (240 ticks, on while 'rem' < 210), the ball is captured when it is inside 10 cm of the beam's x with something on it
+{
+  const { ctx, log } = mk(); const G = K.create(D, ctx, 5); const ball = { x: 0, z: K.PLAYER_Z, diam: 20 };
+  const boss = G.slots.find(s => s.row[6] === 0 && s.beam === 0); assert(boss, 'a boss with beam index 0');
+  boss.st = 3; boss.x = 12; boss.z = -120; G.timers.forEach(t => { t.on = false; });   // park everything else, start only this dive
+  log.attList = [{ mono: 1, type: 1 }, { mono: 2, type: 2 }, { mono: 3, type: 3 }, { mono: 4, type: 4 }, { mono: 5, type: 5 }];
+  K.startDive(G, boss, 3); assert.strictEqual(boss.pi.id, 0x19);
+  let onAt = -1, offAt = -1, capAt = -1;
+  for (let f = 0; f < 600 && offAt < 0; f++) {
+    ball.x = boss.beamX !== undefined ? boss.beamX : ball.x;
+    K.step(G, ball); const b = G.beams[0];
+    if (b.on && onAt < 0) { onAt = f; ball.x = b.x + 4; }
+    if (b.cap && capAt < 0) capAt = f;
+    if (onAt >= 0 && !b.on) offAt = f;
+  }
+  console.log('beam on at', onAt, 'captured at', capAt, 'off at', offAt, 'length', offAt - onAt);
+  assert(onAt > 0 && capAt >= onAt && offAt - onAt >= 205 && offAt - onAt <= 212, 'beam runs about 210 ticks');
+  assert.strictEqual(G.beams[0].list.length, 3, 'ceil(5 * 0.5) things taken'); assert.deepStrictEqual(log.took.length, 3);
+  K.step(G, ball); assert.strictEqual(G.lockX, null, 'lock is gone after the beam ends');
+  // the boss is picked up: they come back, the virtual counts grow
+  log.att = new Set([boss.mono]); K.step(G, ball); assert.deepStrictEqual(log.released.length, 3); assert.strictEqual(G.beams[0].list.length, 0);
+  const virt = G.pool.reduce((a, c) => a + c, 0); console.log('virtual counts after rescue', G.pool.join(), 'sum', virt); assert(virt >= 1);
+  assert(K.virt(G, () => 1) >= 1);
+  // stage 3 has beam passes too (table at 0x89e28 has a third row)
+  assert.deepStrictEqual(D.t89e28.slice(12, 16), [1, 2, 1, 2]);
+}
 console.log('PASS');

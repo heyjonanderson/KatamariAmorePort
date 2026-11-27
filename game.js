@@ -234,7 +234,7 @@ function drawIcon(now) {   // renders lastPick's model into the bottom left 128 
   gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv); bindGroup(og); drawModel(og, m, M.fromR3(Rs, t, 1));
   iconCx.clearRect(0, 0, 128, 128); iconCx.drawImage(canvas, 0, canvas.height - 128, 128, 128, 0, 0, 128, 128);
-  gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0.55, 0.75, 0.95, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, canvas.width, canvas.height); { const c = play.mis.clear || [0.55, 0.75, 0.95]; gl.clearColor(c[0], c[1], c[2], 1); } gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);   // the stage's own clear colour (the old fixed sky blue painted over black stages once the target icon showed)
 }
 let _sf = null, _sfPlay = null;
 function stageFar() {   // optional long draw distance: the stage's whole object spread (diagonal of the box around every object, plus 20%), so no distance clipping is left. The engine clips at the first GRAPHICS far only (A52, A153)
@@ -242,6 +242,8 @@ function stageFar() {   // optional long draw distance: the stage's whole object
   let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (const o of play.objs) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], o.p[k]); hi[k] = Math.max(hi[k], o.p[k]); }
   _sf = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 1.2; _sfPlay = play; return _sf;
 }
+const GALROLL = () => !OPT.galliteral;   // see A164: rolled 180 degrees about the view axis so the player is at the bottom and the formation at the top (`galliteral` in kam_opt keeps the code's (0,1,0) up vector)
+const GALCAM_EYE = [0, -100, -200];   // FUN_0000c578(eye, 0, -100, -200) and FUN_0000c578(target, 0, 0, 0) in FUN_0002918c when selectedMiniGame is 3
 function camInit() {   // gYm_CameraInit: the row for the current size, no transition
   const idx = KSim.cameraRow(S), cp = KSim.cameraParams(S, idx);
   cam.idx = idx; cam.back = cp.back; cam.up = cp.up; cam.ahead = cp.ahead; cam.lookUp = cp.lookUp; cam.far = cp.far; cam.trans = 0; cam.ready = true;
@@ -285,20 +287,21 @@ function draw(alpha) {
   if (!cam.ready) camInit();
   cam.yaw = prevYaw + (S.yaw - prevYaw) * alpha;
   const cfx = Math.sin(cam.yaw), cfz = Math.cos(cam.yaw);
-  const eyeFull = [pos[0] - cfx * cam.back, pos[1] + cam.up, pos[2] - cfz * cam.back];
+  const GALCAM = MODE === 'extra' && EXG === 3 && GAL && !OPT.galcam_off;   // Galaga: FUN_0002918c overwrites eye and target with fixed world points after the table camera (A164)
+  const eyeFull = GALCAM ? GALCAM_EYE.slice() : [pos[0] - cfx * cam.back, pos[1] + cam.up, pos[2] - cfz * cam.back];
   // keep the camera inside the room, as the engine does (FUN_000295ec, A112). One ray from the ball to the wanted eye against the stage's camera hit data. No hit: nothing changes. A hit at fraction f of the way
   // swings the eye straight up, about the horizontal axis across the view, by 10 degrees + 75 degrees * (1 - f), but never past 85 degrees of elevation, at the same distance and with no easing; the eye is then kept
   // at least 0.1 cm above the floor. (My old rule shrank the distance and eased back; the engine does neither.) cam.L is the eye distance, used below to hide the prince when the camera is on top of the ball
-  const tgt = [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
+  const tgt = GALCAM ? [0, 0, 0] : [pos[0] + cfx * cam.ahead, pos[1] + cam.lookUp, pos[2] + cfz * cam.ahead];
   const rb = [eyeFull[0] - pos[0], eyeFull[1] - pos[1], eyeFull[2] - pos[2]], lb = Math.hypot(rb[0], rb[1], rb[2]) || 1;   // the test ray: ball to the wanted eye
   const d0 = [eyeFull[0] - tgt[0], eyeFull[1] - tgt[1], eyeFull[2] - tgt[2]], len0 = Math.hypot(d0[0], d0[1], d0[2]) || 1, hz = Math.hypot(d0[0], d0[2]) || 1, e0 = Math.atan2(d0[1], hz);   // the swing turns the eye round the look-at point (c60c: eye = look + R * (eye - look))
-  let e = e0; { const t = KSim.rayHit(S, pos[0], pos[1], pos[2], rb[0] / lb, rb[1] / lb, rb[2] / lb, lb, CAMSIDE !== '2');
+  let e = e0; { const t = GALCAM ? null : KSim.rayHit(S, pos[0], pos[1], pos[2], rb[0] / lb, rb[1] / lb, rb[2] / lb, lb, CAMSIDE !== '2');
     if (t !== null) { const f = t / lb, sw = Math.min(10 + 75 * Math.min(1, Math.max(0, 1 - f)), 85 - e0 * 180 / Math.PI); e = e0 + Math.max(0, sw) * Math.PI / 180; } }
   cam.e = e; cam.L = lb;
-  const eye = [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
+  const eye = GALCAM ? eyeFull : [tgt[0] + d0[0] / hz * Math.cos(e) * len0, Math.max(0.1, tgt[1] + Math.sin(e) * len0), tgt[2] + d0[2] / hz * Math.cos(e) * len0];
   const far = OPT.far ? Math.max(play.mis.far || 800, stageFar()) : FARMODE === 'old' ? Math.max(cam.far, play.mis.far || 800, play.mis.far2 || 0, cam.back * 3) : (play.mis.far || 800);   // The scene camera (the singleton FUN_0002bca8 draws the world with) gets the FIRST near/far pair of GRAPHICS (A52); the second pair goes to another object. Far is fixed per stage, 800 cm in stage 1. ?far=old brings back the longer clip range I used before
   // The original's scene camera is perspective(fov 48 degrees HORIZONTAL, aspect = height / width): FUN_0002a8b8, fov 0x42400000 set in FUN_0002c5xx. Vertical is 33 degrees at 3:2 (A88)
-  const vp = M.mul(M.persp(Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, [0,1,0]));
+  const vp = M.mul(M.persp(Math.max(2 * Math.atan(Math.tan(24 * Math.PI / 180) * h / w), VIEWWIDE ? 2 * Math.atan(Math.tan(24 * Math.PI / 180) / 1.5) : 0), w / h, Math.max(R * 0.03, 0.05), far), M.look(eye, tgt, GALCAM && GALROLL() ? [0,-1,0] : [0,1,0]));
   gl.useProgram(P); gl.uniform1f(L.alpha, 1); gl.uniform1f(L.flat, 0); gl.uniform3f(L.light, LIGHTS[SET.light][1], LIGHTS[SET.light][2], LIGHTS[SET.light][3]); gl.uniformMatrix4fv(L.vp, false, vp); gl.uniform1i(L.tex, 0);
   gl.enableVertexAttribArray(L.pos); gl.enableVertexAttribArray(L.nrm); gl.enableVertexAttribArray(L.uv);
   // map
@@ -306,7 +309,7 @@ function draw(alpha) {
   // loose objects
   bindGroup(og);
   for (const o of S.objs) { if ((o.state !== 'map' && o.state !== 'fly') || o.stopped) continue; const an = S.info[o.n].anim; let m = og.mods[an ? an.frames[Math.floor((o.aph || 0) + alpha * an.speed) % an.frames.length] : o.model] || og.mods[o.model]; if (!m) continue;   // flip-book monos (A59)
-    let sc = 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
+    let sc = o.sc !== undefined ? o.sc : 1; if (o.born !== undefined) { const d = Math.hypot(o.pos[0] - pos[0], o.pos[2] - pos[2]); const k = (S.frame + alpha - o.born - Math.min(d / 40, 24)) / 10; if (k <= 0) continue; if (k < 1) { const c = 1.70158, x = k - 1; sc = 1 + (c + 1) * x * x * x + c * x * x; } }   // grow in over ~0.35 s, nearer ones first
     drawModel(og, m, M.fromR3(o.rot, o.ppos ? [0,1,2].map(q => o.ppos[q] + (o.pos[q] - o.ppos[q]) * alpha) : o.pos, sc)); }
   // water ripples (A139): the engine draws the GiFx02 quad (100 cm, flat) at the water point with depth test GL_ALWAYS (FUN_00034d58). Lighting state, blend mode and draw order are my guesses: unlit, normal alpha blend, before the ball
   if (S.ripples && S.ripples.length) {
@@ -571,7 +574,7 @@ function frame(now) {
 (async function init() {
   const task = window.KLoad ? KLoad.begin('Loading stage', { expect: 8, cover: true }) : NOLOAD;
   try {
-    play = await (await fetch(`data/${STAGE}/play.json?v=39`)).json(); if (MODE === 'extra' && EXG === 1) MAZE = await (await fetch('data/S007/maze.json?v=1')).json(); if (MODE === 'extra' && EXG === 3) GALD = await (await fetch('data/S021/galaga.json?v=1')).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
+    play = await (await fetch(`data/${STAGE}/play.json?v=39`)).json(); if (MODE === 'extra' && EXG === 1) MAZE = await (await fetch('data/S007/maze.json?v=1')).json(); if (MODE === 'extra' && EXG === 3) GALD = await (await fetch('data/S021/galaga.json?v=2')).json(); task.step(2); if (window.KText && !(window.__noText)) { try { await KText.load(); KText.setPack(PACK); if (KText.lang !== 'en') { const nm = await (await fetch(`data/${STAGE}/names_${KText.lang}.json?v=38`)).json(); for (const k in nm) if (play.info[k]) play.info[k].label = nm[k]; } }   // object names in the chosen language (MONONAME.dat, A95)
          catch (e) { G.err.push('text ' + e.message); } } task.step(1);
     mg = await loadGroup(STAGE, 'map', task); og = await loadGroup(STAGE, 'obj', task);
     try { const cg = await loadGroup('common', 'core', task); ball = makeBallCore(cg, parseInt(STAGE.slice(1), 10)); } catch (e) { G.err.push('core ' + e); ball = makeBall(); }
@@ -684,8 +687,11 @@ function pacPlace() {
   PAC.ghosts.forEach((g, i) => { const q = KPac.pose(PAC, g); for (const j of [i, i + 4, i + 8, i + 12]) { const o = O[j]; if (o.state !== 'map' && o.state !== 'xhid') continue; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = q.x; o.pos[2] = -q.z; o.rot = KSim.eulerView(0, q.ang, 0); o.top = o.pos[1] + o.hi[1]; } });
   for (let j = 0; j < 16; j++) xshow(O[j], sh[j]);
 }
-function pacTier(c) { return c < 48 ? 's04' : c < 96 ? 's05' : c < 144 ? 's06' : c < 192 ? 's07' : c < 240 ? 's08' : 's04'; }   // FUN_00045964: one of five loops by the number of pac-dots picked (48, 96, 144, 192, 240); 240 and more falls back to the first
-function pacPlay(n) { if (PAC.mus !== n) { PAC.mus = n; KSnd.bgm(n); } }
+function pacPlay(n) { if (PAC.mus !== n) { PAC.mus = n; KSnd.bgm(n); } }   // FUN_000454cc: asking for the track that is already loaded changes nothing
+// FUN_00045964(id 0x22): nothing happens while the current mini-game track id is 0x22 (34); otherwise the loop is picked by the dot count (48, 96, 144, 192, 240 and over: back to 0x22) and its id is kept. FUN_0004595c clears the id.
+// So once the first loop plays the music only steps up after a power pellet's music has ended, as in the binary
+function pacTierCall() { if (PAC.cur === 34) return; const c = PAC.cookies, id = c < 48 ? 34 : c < 96 ? 35 : c < 144 ? 36 : c < 192 ? 37 : c < 240 ? 38 : 34; PAC.cur = id; pacPlay('s' + String(id - 30).padStart(2, '0')); }
+function pacTierReset() { PAC.cur = 0; pacTierCall(); }
 function pacDrop() {   // FUN_00050790: 20% of the attached pac-dots come off, 10 points each are taken off the score
   const att = S.objs.filter(o => o.n === 'COCKIE' && o.state === 'ball'); if (!att.length) return;
   const k = KPac.dropCount(att.length); PAC.score -= KPac.PTS[0] * k; let left = k;   // the first one is thrown before the count is tested, so at least one comes off
@@ -709,18 +715,20 @@ function pacPre() {
 function pacPost() {
   const O = S.objs, P = PAC; let fresh = false;
   for (let i = 0; i < 4; i++) if (!P.pel[i] && O[21 + i].state !== 'map' && O[21 + i].state !== 'xhid') { xshow(O[17 + i], true); KPac.powerUp(P); fresh = true; pacPlay('s09'); }   // FUN_000500a8: a pellet is gone: the matching fruit appears (BERRY, CHERRY, MELON, ORANGE; the APPLE never does), 20 s of fright
-  if (P.stun === 0 && !fresh && KPac.tick(P) === 'end') { P.mus = null; pacPlay(pacTier(P.cookies)); }
+  if (P.stun === 0 && !fresh && KPac.tick(P) === 'end') pacTierReset();   // FUN_00050698: the frightened timer ran out
+  if ((P.lastCount || 0) < P.cookies && P.fright === 0) pacTierCall();   // the same function: the dot count rose and no pellet is active
+  P.lastCount = P.cookies;
   for (let i = 0; i < 8; i++) { const o = O[4 + i]; if (o.state !== 'ball') continue;   // a frightened ghost was picked up: the bonus, out of the ball, back as eyes (FUN_0005011c)
     const k = S.attached.indexOf(o); if (k >= 0) S.attached.splice(k, 1); const j = S.ibiList.indexOf(o); if (j >= 0) S.ibiList.splice(j, 1); S.picked--; o.state = 'xhid'; o.ppos = null;
     KPac.eat(P); P.ghosts[i % 4].st = 2; pacPlay('s10'); }
   EX.score = P.score + P.mscore;
-  if (EX.musicAt >= 0 && S.frame >= EX.musicAt) { EX.musicAt = -1; pacPlay(pacTier(P.cookies)); }
+  if (EX.musicAt >= 0 && S.frame >= EX.musicAt) { EX.musicAt = -1; pacTierReset(); }
 }
 function exPre() { if (EXG === 1 && PAC) pacPre(); if (EXG === 3 && GAL) galPre(); }
 function exPick(name) {
   if (EXG === 1 && PAC) {
     const k = KPac.NAMES.indexOf(name); if (k >= 0) PAC.score += KPac.PTS[k];   // FUN_0005054c
-    if (name === 'COCKIE') { PAC.cookies++; KSnd.se(EX.waka ? 's12' : 's11'); EX.waka = !EX.waka; if (PAC.fright === 0) pacPlay(pacTier(PAC.cookies)); }   // FUN_0001446c: ids 0x29 and 0x2a alternate; the music steps up with the count
+    if (name === 'COCKIE') { PAC.cookies++; KSnd.se(EX.waka ? 's12' : 's11'); EX.waka = !EX.waka; }   // FUN_0001446c: ids 0x29 and 0x2a alternate
     else if (k >= 2) KSnd.se('s03');   // fruit: id 0x21
   }
 }
@@ -741,19 +749,30 @@ function galInit() {
     show: (i, on) => xshow(O[i], on),
     place: (i, x, z, a) => { const o = O[i]; if (o.state !== 'map' && o.state !== 'xhid') return; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, a, 0); },
     att: i => O[i].state === 'ball',
-    drop: f => galDrop(f)
+    drop: f => galDrop(f),
+    // tractor beam (A164): BOSSBEAM[0] is mono 0x7c, the three TRACTOR monos 0x88 to 0x8a, one CAPTAMA (0x8b + beam) hangs behind a boss that carries captured things
+    beamPlace: (x, z) => { const o = O[124]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, Math.PI, 0); o.sc = 1; },
+    beamOff: () => { for (const i of [124, 136, 137, 138]) xshow(O[i], false); },
+    tractor: (x, z) => { for (const i of [137, 138, 136]) { const o = O[i]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, 0, 0); o.sc = 0.5; } },
+    cap: (i, x, z, sc) => { const o = O[139 + i]; if (!o) return; if (sc <= 0) { xshow(o, false); return; } xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, 0, 0); o.sc = sc; },
+    attCount: () => S.attached.filter(o => o.state === 'ball').length,
+    attached: () => { const keys = Object.keys(play.info); return S.attached.filter(o => o.state === 'ball').map(o => ({ mono: O.indexOf(o), type: keys.indexOf(o.n) + 1 })); },
+    takeOff: mono => { const o = O[mono], k = S.attached.indexOf(o); if (k < 0) return; KSim.takeOff(S, k); const sl = GAL.slots.find(q => q.mono === mono); if (sl) { sl.dropped = true; sl.lives = 0; } o.state = 'xhid'; o.pos[0] = 1000; o.pos[2] = -1000; },   // FUN_00054b48: hidden and parked at 1000, 1000
+    release: list => { const R = KSim.radius(S); for (const mono of list) { const o = O[mono], a = Math.random() * Math.PI * 2; o.state = 'map'; o.stopped = false; o.vel = null; o.ppos = null; o.pos = [S.pos[0] + Math.cos(a) * R * 0.8, 2.851, S.pos[2] + Math.sin(a) * R * 0.8]; o.rot = KSim.eulerView(0, a, 0); o.rotHome = o.rot; o.top = o.pos[1] + o.hi[1]; } }   // FUN_00053cf4: back at the ball with a random turn, free to be picked up again
   };
   GAL = KGal.create(GALD, ctx, 1); EX.started = false;
 }
 function galRead() {   // OujiCtrlGalaga_GetMoveParam: only left and right, a dead zone of 0.3, power (|input| - 0.3) / 0.7, no dash and no U-turn
   let x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0); const p = pads.S; if (p) x = (p.x - p.ox) / PAD_R; x = Math.max(-1, Math.min(1, x));
   const pw = Math.abs(x) < 0.3 ? 0 : (Math.abs(x) - 0.3) / 0.7;
-  return { L: pw, R: pw, side: pw ? Math.sign(x) : 0, pw, dash: false, flip: false };
+  return { L: pw, R: pw, side: pw ? Math.sign(x) * (GALROLL() ? -1 : 1) : 0, pw, dash: false, flip: false };
 }
 function galInp(inp) { if (inp.side) S.yaw = inp.side > 0 ? Math.PI / 2 : -Math.PI / 2; return { fwd: inp.pw, turn: 0, dash: false, flip: false }; }   // the ball walks sideways: the prince turns to the side for the step, then the camera yaw (0) comes back
 function galFix() {   // FUN_00055338: x between -70 and 70, z fixed at -60
   S.yaw = 0; if (S.pos[0] > KGal.PLAYER_X) { S.pos[0] = KGal.PLAYER_X; if (S.v[0] > 0) S.v[0] = 0; } else if (S.pos[0] < -KGal.PLAYER_X) { S.pos[0] = -KGal.PLAYER_X; if (S.v[0] < 0) S.v[0] = 0; }
   S.pos[2] = -60; S.v[1] = 0;
+  if (GAL && GAL.lockX !== null) { S.pos[0] = GAL.lockX; S.v[0] = 0; }   // held in the beam at its x
+  if (GAL) { const keys = Object.keys(play.info); const v = KGal.virt(GAL, ty => { const i = play.info[keys[ty - 1]]; return i ? i.boxvol * i.add_ratio : 0; }); KSim.setVvol(S, v * (S.addRows && S.addRows.length ? KSim.interpRows(S.addRows, S.diam, 1) : 1)); }   // virtual volume of the captured enemies (FUN_000533b8 times the add-volume ratio, FUN_0001de50)
 }
 function galScore() { const keys = Object.keys(play.info); return KGal.score(GAL, S.attached.filter(o => o.state === 'ball').map(o => keys.indexOf(o.n) + 1)); }
 function galDrop(f) {   // FUN_00054618: a shot throws off 20% of what is attached (at least one), picked at random; the thrown enemies are out of the game (they stop, and a stopped mono is not displayed)
@@ -765,7 +784,7 @@ function galPre() {
   if (!EX.started) { EX.started = true; KSnd.se('galaga_11'); }   // stage intro, id 0x43
   KGal.step(GAL, { x: S.pos[0], z: KGal.PLAYER_Z, diam: S.diam });
   for (const e of GAL.events.splice(0)) {
-    if (e.t === 'dive') KSnd.se('galaga_19'); else if (e.t === 'shot') KSnd.se('galaga_04'); else if (e.t === 'hit') KSnd.se('galaga_23');   // ids 0x4b, 0x3c, 0x4f
+    if (e.t === 'dive') KSnd.se('galaga_19'); else if (e.t === 'shot') KSnd.se('galaga_04'); else if (e.t === 'hit') KSnd.se('galaga_23'); else if (e.t === 'beam') KSnd.se('galaga_05'); else if (e.t === 'beamBack') KSnd.se('galaga_09'); else if (e.t === 'rescue') KSnd.se('galaga_17');   // ids 0x3d, 0x41, 0x49   // ids 0x4b, 0x3c, 0x4f
     else if (e.t === 'stage' && e.stage === 2) KSnd.se('galaga_13'); else if (e.t === 'stage' && e.stage === 3) KSnd.se('galaga_20');   // ids 0x45, 0x4c
     else if (e.t === 'clear' && !EX.done) { EX.done = true; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }
   }
