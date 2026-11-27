@@ -712,6 +712,23 @@
     }
   }
 
+  // gYm_MonoConverge (MonoConverge.cppi, A152), ray mode: every frame, each ground hit that names a distort point pulls the attached objects whose NearIbitsuNo is that point toward the
+  // ball centre (mLocal translation x f32ConvergeRatio, 1 - velocity / max speed * IbitsuConvergeRatio). The near point is chosen at pickup (sGetNearIbitsuNo): the distort point (1 to 24)
+  // whose direction is closest to the direction from the ball to the object. The fluid points also pull their own object in for each ground hit
+  function nearIbitsu(S, o) {
+    const w = mvec(S.R, o.lpos), l = Math.hypot(w[0], w[1], w[2]) || 1; let best = -1, bi = -1;
+    for (const q of S.dpts || []) { if (q.i < 1 || !q.n) continue; const d = (q.n[0] * w[0] + q.n[1] * w[1] + q.n[2] * w[2]) / l; if (d > best) { best = d; bi = q.i; } }
+    return bi;
+  }
+  function convergeRay(S, vmax, hits) {
+    const ratio = 1 - Math.hypot(S.speed, S.dy) / Math.max(vmax, 1e-6) * CR.conv; if (ratio >= 1 || !hits.length) return;
+    for (const h of hits) {
+      if (typeof h.di !== 'number' || h.di < 1) continue;
+      for (const a of S.attached) if (a.near === h.di) a.lpos = [a.lpos[0] * ratio, a.lpos[1] * ratio, a.lpos[2] * ratio];
+    }
+    const hn = hits.map(h => typeof h.di === 'number' ? h.di : -1);
+    for (let j = 0; j < IB_FLUID_N; j++) if (hn[j] === IB_FLUID0 + j) for (let k = 0; k < hits.length; k++) { const pt = (S.dpts || []).find(q => q.i === IB_FLUID0 + j); if (pt && pt.o && pt.o.state === 'ball') pt.o.lpos = pt.o.lpos.map(v => v * ratio); }
+  }
   // KatamariMain.cppi sControl: max speed ratio by how far the stick is pushed. Below Sect1 it ramps up to HalfSpeedRatio, up to Sect2 it stays there,
   // above Sect2 the source formula (with its operator precedence, which the binary keeps) gives Half + (1 - Half * t): 1.4 at Sect2 falling to 1.0 at full tilt
   function tiltFactor(p) {
@@ -1040,7 +1057,7 @@
       if (Math.hypot(v[0], v[1], v[2]) > R + o.maxlen) continue;            // broad phase: ball radius + object bounding radius >= distance (gYm_MonoHitCheck)
       if (!engineHit(S, o, v, R)) continue;                                 // sCheckHitMono: the engine's pickup test (A29)
       const Rt = mtr(S.R), lp = mvec(Rt, v);                                // relative position kept as it was at pickup, no clamping (gYm_MonoHitSetInfo)
-      o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); S.attached.push(o); S.picked++; if (S.info[o.n].ibi) S.ibiList.push(o);
+      o.state = 'ball'; o.lpos = lp; o.lrot = mmul(Rt, o.rot); o.near = nearIbitsu(S, o); S.attached.push(o); S.picked++; if (S.info[o.n].ibi) S.ibiList.push(o);
       const add = o.boxvol * o.addRatio * addRatio(S); o.addVol = add; o.crumbleVol = add; if (!o.rotHome) o.rotHome = o.rot; grow(S, add);
       S.events.push({ type: 'pickup', name: o.n, add }); if (S.target && o.n === S.target && !S.won) { S.won = true; S.events.push({ type: 'won' }); }
     }
@@ -1054,7 +1071,7 @@
     // ERASE_STOPPER: [diameter cm, hit kind]. When the ball reaches the diameter, that kind of collision polygon stops blocking (A33)
     for (const st of S.stoppers) if (!S.erased[st[1]] && S.diam >= st[0]) { S.erased[st[1]] = true; S.events.push({ type: 'area', kind: st[1] }); }
     if (!S.won && !S.target && !S.noWin && S.diam >= S.goal) { S.won = true; S.events.push({ type: 'won' }); }
-    converge(S, R, vmax);
+    if (S.ray) convergeRay(S, vmax, S.lastRay ? S.lastRay.c.ground : []); else converge(S, R, vmax);
     S.pos[1] += S.lift; S.liftApplied = S.lift;
   }
 
