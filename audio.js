@@ -21,9 +21,9 @@
   function stopBgm() { for (const n of bgmNodes) { try { n.stop(); } catch (e) { } } bgmNodes = []; wantBgm = null; }
   // intro (A) once, then the loop (B), scheduled back to back so there is no gap
   async function bgm(stem) {
-    wantBgm = stem; if (!started || !ensure()) return;
+    wantBgm = stem; if (!ensure()) return;   // the context can be made and can decode before the first tap (it stays suspended), so the music is ready the moment the tap unlocks it
     let [a, b] = await Promise.all([load(stem + '_A'), load(stem + '_B')]); if (!b) { a = null; b = await load(stem); }   // a plain file loops by itself
-    if (wantBgm !== stem || !b) return;
+    if (!started || wantBgm !== stem || !b) return;
     for (const n of bgmNodes) { try { n.stop(); } catch (e) { } } bgmNodes = [];
     const t0 = ctx.currentTime + 0.05; let t = t0;
     if (a) { const s = ctx.createBufferSource(); s.buffer = a; s.connect(bgmGain); s.start(t); bgmNodes.push(s); t += a.duration; }
@@ -42,9 +42,19 @@
     if (ctx.state !== 'running') { try { const r = ctx.resume(); if (r && r.then) r.then(settle, () => { }); } catch (e) { } try { const b = ctx.createBuffer(1, 1, 22050), n = ctx.createBufferSource(); n.buffer = b; n.connect(ctx.destination); n.start(0); } catch (e) { } }
     settle();
   }
-  function settle() { if (started || !ctx || ctx.state !== 'running') return; started = true; if (wantBgm) bgm(wantBgm); }
+  function settle() { if (started || !ctx || ctx.state !== 'running') return; started = true; hidePrompt(); if (wantBgm) bgm(wantBgm); }
+  // iOS Safari only unlocks audio from a touchend or click, and a finger held on the stick never ends. If nothing has unlocked it after a moment, a small button asks for one tap (tester 2026-11-27: Safari music and effects start late)
+  let prompt = null, promptTimer = null;
+  function hidePrompt() { if (promptTimer) { clearTimeout(promptTimer); promptTimer = null; } if (prompt) { prompt.remove(); prompt = null; } }
+  function showPrompt() {
+    promptTimer = null; if (started || muted || prompt || !root.document || !root.document.body) return;
+    prompt = root.document.createElement('button'); prompt.textContent = 'Tap for sound';
+    prompt.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:99;padding:8px 14px;border-radius:16px;border:0;background:rgba(0,0,0,.65);color:#fff;font:600 14px system-ui,sans-serif';
+    prompt.addEventListener('click', start); root.document.body.appendChild(prompt);
+  }
+  if (root.document && root.addEventListener) root.addEventListener('load', () => { promptTimer = setTimeout(showPrompt, 1500); });
   function setMuted(m) { muted = !!m; try { localStorage.setItem('kmute', muted ? '1' : '0'); } catch (e) { } if (master) master.gain.value = muted ? 0 : 1; }
   for (const ev of ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click', 'mousedown']) root.addEventListener(ev, start, { passive: true });
   if (root.document) root.document.addEventListener('visibilitychange', () => { if (!root.document.hidden && ctx && ctx.state !== 'running') { started = false; start(); } });
-  root.KSnd = { bgm, stopBgm, se, start, setMuted, isMuted: () => muted, preload: names => { if (started && ensure()) names.forEach(load); } };
+  root.KSnd = { bgm, stopBgm, se, start, setMuted, isMuted: () => muted, preload: names => { if (ensure()) names.forEach(load); } };
 })(typeof window !== 'undefined' ? window : globalThis);
