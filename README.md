@@ -41,6 +41,7 @@ The original game is the default. Where a tester asks for something the original
 
 - **Extra minute on timed runs.** Adds 60 s to Story and Time Attack limits. Runs with it on do not save best times, because they are not comparable with the original. Restart to apply.
 - **Repeating object sounds off.** The original repeats a sound while an attached object keeps making it; this plays it once.
+- **Straight wall climb.** While the ball climbs a wall it only goes straight into it, with no sideways slide. In the original the push is straight into the wall already, but speed from the approach carries sideways; this removes that (pause menu, off by default).
 - **Wide view.** Keeps the original's 33 degree vertical view angle on wider windows (the original fixes the horizontal angle at 48 degrees, so wide screens see less height). `?view=wide` does the same.
 
 Queued as toggles: a see-through cutout when something blocks the view, and a size to roll up shown for each item in the Collection.

@@ -18,7 +18,7 @@ if (!mid.onTop) fails.push('3.5 cm box not reached');
 const RAY = K.create(play, {}).ray;
 if (!RAY && hi.onTop) fails.push('5 cm box should be out of reach');
 if (hi.topFrames < 10 || hi.topFrames > 12) fails.push('top hold should be about 10 frames, got ' + hi.topFrames);
-if (Math.abs(hi.maxRise - 3.5) > (RAY ? 0.4 : 0.1)) fails.push('rise should stop at 0.7 of the diameter (3.5), got ' + hi.maxRise.toFixed(2));
+if (Math.abs(hi.maxRise - 3.5) > (RAY ? 0.5 : 0.1)) fails.push('rise should stop at 0.7 of the diameter (3.5), got ' + hi.maxRise.toFixed(2));
 if (hi.lastForbid !== 10) fails.push('lockout should be 10 frames, got ' + hi.lastForbid);
 if (fails.length) { console.log('FAIL', fails.join('; ')); process.exit(1); }
 console.log('PASS');

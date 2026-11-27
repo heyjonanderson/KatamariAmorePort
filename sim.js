@@ -367,7 +367,7 @@
       G: buildGround(play.tris), hit: play.hit && play.hit.length ? buildHit(play.hit, play.hit_kind) : null, camHit: play.camhit && play.camhit.length ? { tris: Float32Array.from(play.camhit), kind: null } : null, tab: play.mis.speed.filter(r => r.length >= 11), cam: play.mis.camera || [], speedRows: play.mis.speed.map(r => [r[0], r[1]]), gravRows: pairs(play.mis.gravity), addRows: pairs(play.mis.addvol),
       info: play.info, startDiam, goal, target: tgtInfo ? play.mis.target : null, targetLabel: tgtInfo ? (tgtInfo.label || play.mis.target).trim() : null,
       pos: [mf[0], Math.max(-mf[1], 5) + startDiam, mf[2]],        // PLACEHOLDER (P6): start y flipped from logic, then dropped to the floor
-      vy: 0, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
+      vy: 0, dy: 0, climbLock: !!opts.climbLock, flyT: 0, fallT: 0, speed: 0, v: [0, 0], dashT: 0, dashCool: 0, dash: false, wheelSpin: false, wheelSpd: 0, dashRep: 0, dashHeld: false, dS: { n: 0, w: 0, dw: 0, dur: 240, fw: 0, forbid: false, on: false, spin: false, start: false }, yaw: mf[6],   // P7: mission data is already in engine space (y down), which matches view space in x and z, so no z flip. Engine ground normal starts as (0,-1,0)
       stoppers: play.mis.stoppers || [], erased: {}, layers: (() => { const lm = play.mis.layers_by_mode && play.mis.layers_by_mode[opts.set || 'S']; const l = lm && lm.length ? lm : play.mis.layers; return l && l.length ? l : null; })(), layer: 0, R: I3(), volume: sphereVol(startDiam / 200), diam: startDiam,
       noCeil: !!opts.noCeil, ceilHit: false, ib: { st: 0, no: -1, len: 0, posi: [0, 0, 0], vec: [0, 0, 0], fluidVec: [0, 0, 0], rot: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, ray: opts.ray !== undefined ? !!opts.ray : !(typeof process !== 'undefined' && process.env && process.env.KRAY === '0'), rayObjs: opts.rayObjs !== undefined ? !!opts.rayObjs : !(typeof process !== 'undefined' && process.env && process.env.KOBJ === '0'), gNorm: [0, 1, 0], holdHist: [], holdTime: 0, holdIn: false, holdSeen: new WeakSet(), lift: 0, liftApplied: 0, ctrlOff: 0, cw: { on: false, top: false, topT: 0, startY: 0, speed: 0, eff: 0, forbid: 0, norm: [0, 0] }, brake: false, crumbleCool: 0, crumbled: 0, flipT: 0, flipN: 14, flipYaw0: 0, ouji_jump: play.mis.ouji_jump, flipHeld: false, lumps: [], ibiList: [], recover: play.mis.recover || null, objs: [], attached: [], picked: 0, frame: 0, won: false, events: [], buried: 0, noCull: !!opts.noCull, water: play.water && play.water.length ? buildWater(play.water) : null, hitWater: false, waterPos: null, rippleWait: RIPPLE_WAIT, ripples: [], noWin: !!opts.noTarget, noReflect: !!opts.noReflect,
     };
@@ -800,9 +800,14 @@
     }
     const fmax = tp.speed * ratio * (cw.on ? CW.maxSpd : 1);   // sControl: fmax *= MaxSpdRatio while climbing
     let vx = S.v[0], vz = S.v[1]; const oldMag = Math.hypot(vx, vz);
-    if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; if (S.reflVy !== undefined) { S.vy = S.reflVy; S.reflVy = undefined; } }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
+    if (S.reflV) { vx = S.reflV[0]; vz = S.reflV[1]; S.reflV = null; S.dy = 0; if (S.reflVy !== undefined) { S.vy = S.reflVy; S.reflVy = undefined; } }   // last frame's wall bounce replaces the new move (sControl copies vReflection into fvDelta, A103)
     else if (dir !== 0) {
-      const pa = S.yaw + (st.mdir >= 0 ? st.phi : 0); let ix = Math.sin(pa), iz = Math.cos(pa);   // the push is the prince's facing turned by the stick angle (mInput->rotY)
+      const pa = S.yaw + (st.mdir >= 0 ? st.phi : 0); let ix = Math.sin(pa), iz = Math.cos(pa), iy = 0;   // the push is the prince's facing turned by the stick angle (mInput->rotY)
+      if (S.ray && cw.on && cw.norm) { ix = -cw.norm[0]; iz = -cw.norm[1]; }          // sControl: while climbing the acceleration is straight into the wall (fvClimbWallNorm x -facc, y 0), whatever the stick angle (A151)
+      else if (S.ray && S.grounded && S.gNorm && S.gNorm[1] < 0.9999 && S.gNorm[1] > 0.01) {   // sControl, HitGround: the input vector is taken into the ground plane and normalised, so on a slope the push has a vertical part (A151)
+        const n = S.gNorm, d = ix * n[0] + iz * n[2]; let hx = ix - n[0] * d, hy = -n[1] * d, hz = iz - n[2] * d; const hl = Math.hypot(hx, hy, hz);
+        if (hl > 1e-5) { ix = hx / hl; iy = hy / hl; iz = hz / hl; }
+      }
       // sCheckBreakInput: the input has to point within BrakeAngle (30 degrees) of straight against the motion. A brake starts only above BrakeSpeedRatio (45%)
       // of the max speed for the direction the ball is travelling relative to the prince (front, back or side), and then holds until the input stops opposing
       let braking = false;
@@ -815,11 +820,12 @@
       S.brake = braking;
       if (braking) { const b = S.brakeEffect * power; vx -= vx / oldMag * b; vz -= vz / oldMag * b; }
       else {
-        vx += ix * acc; vz += iz * acc; const nm = Math.hypot(vx, vz);
-        if (nm > fmax && nm > oldMag) { const keep = oldMag < fmax ? fmax : oldMag; vx = vx / nm * keep; vz = vz / nm * keep; }   // same overshoot rule as the engine
+        vx += ix * acc; vz += iz * acc; S.dy += iy * acc; const nm = Math.hypot(vx, S.dy, vz), om3 = Math.hypot(oldMag, S.dy - iy * acc);
+        if (nm > fmax && nm > om3) { const keep = om3 < fmax || cw.on ? fmax : om3; vx = vx / nm * keep; vz = vz / nm * keep; S.dy = S.dy / nm * keep; }   // same overshoot rule as the engine; while climbing the cap is the climb max speed (sControl)
       }
     }
-    { const dr = moveTurn ? DRAG * KP.moveTurnRegist : DRAG; vx *= 1 - dr; vz *= 1 - dr; }
+    if (!(S.ray && (cw.on || !S.grounded))) { const dr = moveTurn ? DRAG * KP.moveTurnRegist : DRAG; vx *= 1 - dr; vz *= 1 - dr; S.dy *= 1 - dr; }   // sRegistance: no drag in the air (Fly); sControl: none while climbing (A151)
+    if (cw.on) { S.dy = 0; if (S.climbLock && S.ray && cw.norm) { const d = vx * cw.norm[0] + vz * cw.norm[1]; vx = cw.norm[0] * d; vz = cw.norm[1] * d; } }   // optional (off by default): the ball goes straight into the wall while it climbs, no sideways slide
     if (Math.hypot(vx, vz) < 1e-3) { vx = 0; vz = 0; }
     const vx0 = vx, vz0 = vz, vIn = Math.hypot(vx, vz), vmax = tp.speed; let hitPow = 0;   // incoming velocity, for crumble
     const bottom = S.pos[1] - R;
@@ -889,7 +895,7 @@
           const m = axisAngle([vz / mh, 0, -vx / mh], w); b.rot = mmul(m, b.rot); S.R = mmul(m, S.R);   // mDistortRot = m x mDistortRot, mRot = m x mRot
         }
         const v = mvec(b.rot, [-b.fluidVec[0], -b.fluidVec[1], -b.fluidVec[2]]); S.pos = [b.posi[0] + v[0], b.posi[1] + v[1], b.posi[2] + v[2]]; S.vy = 0; moved = 0;
-      } else { const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy; }
+      } else { const g = cw.on ? 0 : gravity(S); S.vy = cw.on ? 0 : S.vy - g; S.pos[1] += S.vy + (cw.on ? 0 : S.dy); }
       S.dpts = distortPoints(S, R, S.pos, vIn, cw.on);
       const c = rayContacts(S, R, oldP, { stop: false, pts: S.dpts });
       S.lastRay = { c, old: oldP };
