@@ -160,14 +160,14 @@ const UI = {};                                // HUD images
 // CATCH_SE = [2, 0, n, 0, every]: n is the catchSeNo, every = repeat interval in frames. requestMonoSe (FUN_00045d88) plays the sound id found in a table at 0x89260:
 // one row of four ids per STAGE (global stage index 0 to 20, so S007, S014 and S021 are empty rows), indexed by n. Id 87 and up is KD2_SE_mono_01 and up (id - 86) (A53, A99, A104)
 const catchSeFile = (stage, n) => { const N = parseInt(stage.slice(1), 10), row = N <= 6 ? [[1, 2], [3, 4], [5, 6], [7, 8, 9], [10, 11], [12, 13]][N - 1] : N >= 8 && N <= 13 ? [14 + 2 * (N - 8), 15 + 2 * (N - 8)] : N >= 15 && N <= 20 ? [26 + 2 * (N - 15), 27 + 2 * (N - 15)] : []; return row[n] || 0; };   // 0 = no sound
-let activeCatch = null, paused = false;
+let activeCatch = null, paused = false, talk = false;
 // restart builds the whole stage again, which blocks the page for a moment on the big stages, so show the spinner first (A62)
 function restartUI() { const t = window.KLoad ? KLoad.begin('Restarting', { now: true }) : NOLOAD; setTimeout(() => { restart(); t.end(); }, 40); }
 function restart() {
-  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E', extra: 'T' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; S.convMul = OPT.convfast ? 4 : 1; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
+  S = KSim.create(play, Object.assign(MODE === 'story' ? {} : { noTarget: true }, { set: { story: 'S', timeattack: 'T', exact: 'J', eternal: 'E', extra: 'T' }[MODE] || 'S' }, qs.get('catch') ? { catchMode: qs.get('catch') } : {}, qs.get('cull') === 'off' ? { noCull: true } : {}, qs.get('ceil') === 'off' ? { noCeil: true } : {}, qs.get('hit') === 'sphere' ? { ray: false } : {}, { climbLock: !!OPT.climb })); G.S = S; talk = false; S.convMul = OPT.convfast ? 4 : 1; if (MODE === 'extra') { S.noWin = true; exInit(); } resShown = false; activeCatch = null; pulse = 0; puffs.length = 0; bang = 0; airT = 0; lastPick = null; if (ball) { ball.mult.fill(1); ball.dirty = true; for (let i = 0; i < ball.mult.length; i++) { const o = i * 8; ball.data[o] = ball.data[o + 3]; ball.data[o + 1] = ball.data[o + 4]; ball.data[o + 2] = ball.data[o + 5]; } } if (dlgRes) { dlgRes.stop(); dlgRes = null; } $('res').style.display = 'none';
   for (let i = 0; i < 60; i++) KSim.step(S, { fwd: 0, turn: 0 });   // settle on the floor, same as the bot test
   S.frame = 0; S.events.length = 0;
-  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; if (MODE === 'extra' && EXG === 1) KSnd.stopBgm(); else KSnd.bgm(MODE === 'extra' && EXG === 2 ? 'BGM_ST14' : MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
+  prevPos = S.pos.slice(); prevYaw = S.yaw; cam.yaw = S.yaw; cam.ready = false; echo.on = echo.want = false; lost = false; toast = null; for (const k in runItems) delete runItems[k]; if (MODE === 'extra' && (EXG === 1 || EXG === 3)) KSnd.stopBgm(); else KSnd.bgm(MODE === 'extra' && EXG === 2 ? 'BGM_ST14' : MODE === 'timeattack' || MODE === 'extra' ? 'BGM_ST00' : 'BGM_ST' + String(parseInt(STAGE.slice(1), 10)).padStart(2, '0'));   // time attack plays BGM id 3 (BGM_ST00) on every stage; the other modes use the stage's own track (FUN_0002d244, mode field == 1, A125) ouji = { pat: 0, t: 0 };
   { const tl = play.mis.time_limit_n || [240, 120, 300, 240, 10000, 10000]; S.timeLimit = { story: tl[2], timeattack: tl[3], exact: tl[4], eternal: tl[5], extra: tl[1] }[MODE]; if (!(S.timeLimit < 10000)) S.timeLimit = Infinity; else if (OPT.minute && (MODE === 'story' || MODE === 'timeattack')) S.timeLimit += 60; }   // TIME_LIMIT_1: [par, ?, story, time attack, exact, eternal]; 10000 s means no limit (A90)
   if (MODE === 'exact') S.goal = play.mis.exact_mm / 10;   // MISSION_DATA_EXT: the exact-size target, in mm (A91)
   $('msg').style.display = 'none'; acc = 0;
@@ -246,6 +246,7 @@ function stageFar() {   // optional long draw distance: the stage's whole object
   let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; for (const o of play.objs) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], o.p[k]); hi[k] = Math.max(hi[k], o.p[k]); }
   _sf = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) * 1.2; _sfPlay = play; return _sf;
 }
+const eulY = a => KSim.eulerView(0, a * 180 / Math.PI, 0);   // eulerView takes degrees; the mini-game code works in radians (A168)
 const GALROLL = () => !OPT.galliteral;   // see A164: rolled 180 degrees about the view axis so the player is at the bottom and the formation at the top (`galliteral` in kam_opt keeps the code's (0,1,0) up vector)
 const GALCAM_EYE = [0, -100, -200];   // FUN_0000c578(eye, 0, -100, -200) and FUN_0000c578(target, 0, 0, 0) in FUN_0002918c when selectedMiniGame is 3
 function camInit() {   // gYm_CameraInit: the row for the current size, no transition
@@ -363,7 +364,7 @@ function draw(alpha) {
   if (blink) return;
   if (MODE === 'extra' && EXG === 1 && PAC && og) {   // Pac-Man: the Pac-Man model (the powered one while the ghosts are blue) takes the place of the ball core, turned the way the camera looks (FUN_00050c74: yaw + pi; size is my guess, A160)
     const nm = PAC.fright > 0 ? 'PACMAN3' : 'PACMAN', pi = S.info[nm], pm = pi && og.mods[pi.model];
-    if (pm) { const R0 = S.startDiam / 2, Rd = R0 + (R - R0) * 0.38, yw = prevYaw + (S.yaw - prevYaw) * alpha; bindGroup(og); drawModel(og, pm, M.fromR3(KSim.eulerView(0, yw + Math.PI, 0), bpos, Rd / R0 * (1 + 0.05 * pulse))); return; }
+    if (pm) { const R0 = S.startDiam / 2, Rd = R0 + (R - R0) * 0.38, yw = prevYaw + (S.yaw - prevYaw) * alpha; bindGroup(og); drawModel(og, pm, M.fromR3(eulY(yw), bpos, Rd / R0 * (1 + 0.05 * pulse))); return; }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, ball.vbo); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ball.ibo);
   gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(L.nrm, 3, gl.FLOAT, false, 32, 12); gl.vertexAttribPointer(L.uv, 2, gl.FLOAT, false, 32, 24);
@@ -374,7 +375,7 @@ function draw(alpha) {
 
 // ---- HUD: original art (GAMEDATA / IMAGE .dat), layout is mine (PLACEHOLDER P16) ----
 const hudc = $('hud'), hx = hudc.getContext('2d');
-const IMGS = { EXGAL1: 'ui/GAMEDT2x/GiEXGAL1.png', KFACE: 'ui/IMAGE/SYSIMG04.png', SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
+const IMGS = { EXTEK: 'ui/GAMEDT2x/GiEXTEKE.png', EXTEKJ: 'ui/GAMEDT2x/GiEXTEKJ.png', EXGAL1: 'ui/GAMEDT2x/GiEXGAL1.png', KFACE: 'ui/IMAGE/SYSIMG04.png', SIZEB: 'ui/GAMEDT2x/GiSIZEB.png', SIZEF: 'ui/GAMEDT2x/GiSIZEF.png', NUMW: 'ui/GAMEDT2x/GiNUM_W.png', NUMO: 'ui/GAMEDT2x/GiNUM_O.png', TIMER: 'ui/GAMEDT2x/GiTIMER.png', PAD: 'ui/IMAGE/SYSPAD.png', PADC: 'ui/IMAGE/SYSPADC.png', FX1: 'ui/GAMEDT2x/GiFx01.png', FX3: 'ui/GAMEDT2x/GiFx03.png', MONO: 'ui/GAMEDT2x/GiMONO.png', TIMERH: 'ui/GAMEDT2x/GiTIMERH.png', EARTH: 'ui/GAMEDT2x/GiEARTH.png', OUJI: 'ui/GAMEDT2x/GiOUJI.png', HAND: 'ui/GAMEDT2x/GiHAND.png', FX2: 'ui/GAMEDT2x/GiFx02.png', OUJI2: 'ui/GAMEDT2x/GiOUJI2.png' };
 async function loadUI(task) { await Promise.all(Object.entries(IMGS).map(async ([k, u]) => { try { UI[k] = await loadImage(u); } catch (e) { G.err.push(String(e)); } task && task.step(1); })); }
 // glyph cells of the number sheets. big: 44x56, digits 0-4 on row 0, 5-9 on row 1. small: 32x40 on rows 2-3, row 3 also has c (cell 5) and m (cell 6)
 function glyph(ch) {
@@ -397,6 +398,23 @@ function fmtDiamHud(cm) {   // as the original shows it: 6cm4mm, 1m24cm1mm
 }
 function fmtDiam(cm) { return fmtDiamHud(cm); }
 // GiEXGAL1 holds the art STAGE 1, STAGE 2 and STAGE 3 (rows 37, 109 and 178 of the 512 x 256 sheet); the binary's draw call for it was not found, so the place, size and time (2.5 s, fading) are mine (A166)
+// Tekken trick popup (A168): GiEXTEKE / GiEXTEKJ hold the seven trick names, six trick icons and COMBO2 / COMBO3 (FUN_0003279c picks them by trick index; the name rows are in category order, row 6 is NO SKILL).
+// The binary scales a popup object in 15 frame pulses (FUN_00032880); where it draws and how it stacks is not in the code I could follow, so the port pops one line per pulse, centred, newest on the bottom
+const TEK_NAME = { e: [[122,14,416,52],[51,77,481,120],[99,141,436,182],[29,205,484,245],[36,265,479,306],[66,332,463,375],[23,386,246,441]], j: [[34,9,477,54],[126,69,402,125],[65,133,437,185],[104,198,384,250],[34,261,485,310],[120,325,392,380],[15,386,245,446]] };
+const TEK_ICON = [[265,386,291,424],[301,390,340,420],[344,386,381,422],[385,388,425,421],[428,398,469,414],[471,392,511,421]], TEK_COMBO = [null, null, [11,459,247,505], [262,459,493,505]];
+function tekPopup(W, H) {
+  const q = MODE === 'extra' && EXG === 2 && EX && EX.seq; if (!q || q.st !== 3) return;
+  const ja = window.KText && KText.lang === 'ja', img = ja ? UI.EXTEKJ : UI.EXTEK, tab = ja ? TEK_NAME.j : TEK_NAME.e; if (!img) return;
+  const t = EX.techs, b = EX.bonus || 0, items = t.length ? t.map(k => ({ r: tab[k], ic: TEK_ICON[k] })) : [{ r: tab[6] }];
+  if (b >= 2) items.push({ r: TEK_COMBO[b] });
+  const shown = Math.min(q.i + 1, items.length), lh = Math.min(H * 0.13, 60), sc = lh / 52, cy0 = H * 0.5 - (items.length - 1) * lh * 0.5, prog = 1 - Math.max(q.p, 0) / 15;
+  items.slice(0, shown).forEach((it, k) => {
+    const [x0, y0, x1, y1] = it.r, w = (x1 - x0) * sc, h = (y1 - y0) * sc, pop = k === shown - 1 && q.i < items.length ? 1 + 0.5 * (1 - prog) : 1, ic = it.ic, iw = ic ? (ic[2] - ic[0]) * sc : 0, tot = w + (ic ? iw + 10 : 0);
+    hx.save(); hx.translate(W / 2, cy0 + k * lh); hx.scale(pop, pop); hx.globalAlpha = k === shown - 1 && q.i < items.length ? Math.min(1, 0.4 + prog) : 1;
+    let x = -tot / 2; if (ic) { hx.drawImage(img, ic[0], ic[1], ic[2] - ic[0], ic[3] - ic[1], x, -(ic[3] - ic[1]) * sc / 2, iw, (ic[3] - ic[1]) * sc); x += iw + 10; }
+    hx.drawImage(img, x0, y0, x1 - x0, y1 - y0, x, -h / 2, w, h); hx.restore();
+  });
+}
 function galBanner(W, H) {
   const b = typeof EX !== 'undefined' && EX && EX.banner; if (!(MODE === 'extra' && EXG === 3 && b && UI.EXGAL1)) return;
   const age = (S.frame - b.f) / KSim.FPS, T = 2.5; if (age < 0 || age > T) return;
@@ -409,7 +427,7 @@ function drawHud() {
   hx.setTransform(dpr, 0, 0, dpr, 0, 0); hx.clearRect(0, 0, W, H);
   if (!G.ready || !S) return;
   echoDraw(W, H);
-  galBanner(W, H);
+  galBanner(W, H); tekPopup(W, H);
   const gs = Math.max(120, Math.min(190, Math.min(W, H) * 0.3));
   // size gauge (A140, FUN_00031568): the green back gear (GiSIZEB) and the rainbow front gear (GiSIZEF) are both scaled from the screen corner by s = 0.3 + 0.7 * min(1.5, (diameter - start) / (goal - start)), and pulse against each other:
   // back * (1 + 0.05 sin a), front * (1 - 0.05 sin a), where a steps by 45 degrees every 3 frames (24 frame cycle). Which of the two takes the plus sign is my guess (the back one is drawn first); gs is my full size
@@ -546,7 +564,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (!G.ready) return;
   const dt = Math.min((now - last) / 1000, 0.25); last = now; last_dt = dt;
-  if (paused) { acc = 0; return; }
+  if (paused || talk) { acc = 0; return; }
   acc += dt; const stepDt = 1 / KSim.FPS;
   const inp = MODE === 'extra' && EXG === 3 && GAL ? galRead() : readInput();
   let n = 0;
@@ -702,7 +720,7 @@ function pacInit() {
 }
 function pacPlace() {
   const O = S.objs, sh = KPac.shown(PAC);
-  PAC.ghosts.forEach((g, i) => { const q = KPac.pose(PAC, g); for (const j of [i, i + 4, i + 8, i + 12]) { const o = O[j]; if (o.state !== 'map' && o.state !== 'xhid') continue; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = q.x; o.pos[2] = -q.z; o.rot = KSim.eulerView(0, q.ang, 0); o.top = o.pos[1] + o.hi[1]; } });
+  PAC.ghosts.forEach((g, i) => { const q = KPac.pose(PAC, g); for (const j of [i, i + 4, i + 8, i + 12]) { const o = O[j]; if (o.state !== 'map' && o.state !== 'xhid') continue; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = q.x; o.pos[2] = -q.z; o.rot = eulY(q.ang); o.top = o.pos[1] + o.hi[1]; } });
   for (let j = 0; j < 16; j++) xshow(O[j], sh[j]);
 }
 function pacPlay(n) { if (PAC.mus !== n) { PAC.mus = n; KSnd.bgm(n); } }   // FUN_000454cc: asking for the track that is already loaded changes nothing
@@ -765,18 +783,18 @@ function galInit() {
   S.pickRaw = true; S.noClimbAll = true;
   const ctx = {
     show: (i, on) => xshow(O[i], on),
-    place: (i, x, z, a) => { const o = O[i]; if (o.state !== 'map' && o.state !== 'xhid') return; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, a, 0); },
+    place: (i, x, z, a) => { const o = O[i]; if (o.state !== 'map' && o.state !== 'xhid') return; o.ppos = o.state === 'map' ? o.pos.slice() : null; o.pos[0] = x; o.pos[2] = -z; o.rot = eulY(a); },
     att: i => O[i].state === 'ball',
     drop: f => galDrop(f),
     // tractor beam (A164): BOSSBEAM[0] is mono 0x7c, the three TRACTOR monos 0x88 to 0x8a, one CAPTAMA (0x8b + beam) hangs behind a boss that carries captured things
-    beamPlace: (x, z) => { const o = O[124]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, Math.PI, 0); o.sc = 1; },
+    beamPlace: (x, z) => { const o = O[124]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = eulY(Math.PI); o.sc = 1; },
     beamOff: () => { for (const i of [124, 136, 137, 138]) xshow(O[i], false); },
-    tractor: (x, z) => { for (const i of [137, 138, 136]) { const o = O[i]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, 0, 0); o.sc = 0.5; } },
-    cap: (i, x, z, sc) => { const o = O[139 + i]; if (!o) return; if (sc <= 0) { xshow(o, false); return; } xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = KSim.eulerView(0, 0, 0); o.sc = sc; },
+    tractor: (x, z) => { for (const i of [137, 138, 136]) { const o = O[i]; xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = eulY(0); o.sc = 0.5; } },
+    cap: (i, x, z, sc) => { const o = O[139 + i]; if (!o) return; if (sc <= 0) { xshow(o, false); return; } xshow(o, true); o.ppos = null; o.pos[0] = x; o.pos[2] = -z; o.rot = eulY(0); o.sc = sc; },
     attCount: () => S.attached.filter(o => o.state === 'ball').length,
     attached: () => { const keys = Object.keys(play.info); return S.attached.filter(o => o.state === 'ball').map(o => ({ mono: O.indexOf(o), type: keys.indexOf(o.n) + 1 })); },
     takeOff: mono => { const o = O[mono], k = S.attached.indexOf(o); if (k < 0) return; KSim.takeOff(S, k); const sl = GAL.slots.find(q => q.mono === mono); if (sl) { sl.dropped = true; sl.lives = 0; } o.state = 'xhid'; o.pos[0] = 1000; o.pos[2] = -1000; },   // FUN_00054b48: hidden and parked at 1000, 1000
-    release: list => { const R = KSim.radius(S); for (const mono of list) { const o = O[mono], a = Math.random() * Math.PI * 2; o.state = 'map'; o.stopped = false; o.vel = null; o.ppos = null; o.pos = [S.pos[0] + Math.cos(a) * R * 0.8, 2.851, S.pos[2] + Math.sin(a) * R * 0.8]; o.rot = KSim.eulerView(0, a, 0); o.rotHome = o.rot; o.top = o.pos[1] + o.hi[1]; } }   // FUN_00053cf4: back at the ball with a random turn, free to be picked up again
+    release: list => { const R = KSim.radius(S); for (const mono of list) { const o = O[mono], a = Math.random() * Math.PI * 2; o.state = 'map'; o.stopped = false; o.vel = null; o.ppos = null; o.pos = [S.pos[0] + Math.cos(a) * R * 0.8, 2.851, S.pos[2] + Math.sin(a) * R * 0.8]; o.rot = eulY(a); o.rotHome = o.rot; o.top = o.pos[1] + o.hi[1]; } }   // FUN_00053cf4: back at the ball with a random turn, free to be picked up again
   };
   GAL = KGal.create(GALD, ctx, 1); EX.started = false;
 }
@@ -798,12 +816,21 @@ function galDrop(f) {   // FUN_00054618: a shot throws off 20% of what is attach
   let k = Math.max(Math.floor(n * f), 1); for (let i = att.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [att[i], att[j]] = [att[j], att[i]]; }
   for (const o of att.slice(0, k)) { const sl = GAL.slots.find(q => q.mono === S.objs.indexOf(o)); if (sl) { sl.dropped = true; sl.lives = 0; } o.stopLand = true; KSim.crumbleOne(S, S.attached.indexOf(o), 1.0); }
 }
+// The King speaks between Galaga stages (A168): the start text index is stage % 7 + galaga stage - 1 (FUN_00041520 area, text group at 0x8783e), so pack 3's START_GAME entries 6, 7 and 8 are the stage 1, 2 and 3 lines
+// ("Next is Stage 2. Concentrate!"). The port shows entries 7 and 8 over the King screen at the stage hand-over, with the game held, then starts the stage banner
+function kingTalk(idx, done) {
+  const KT = window.KText; if (!KT) { done(); return; }
+  talk = true; $('rRetry').style.display = $('rMenu').style.display = 'none'; $('res').style.display = 'block';
+  const pages = KT.pages([[KT.group('START_GAME')[idx] || '']]);
+  if (dlgRes) dlgRes.stop();
+  dlgRes = KT.dialog($('rDlg'), pages, () => { dlgRes.stop(); $('res').style.display = 'none'; talk = false; done(); });
+}
 function galPre() {
   if (!EX.started) { EX.started = true; KSnd.se('galaga_11'); EX.banner = { n: 1, f: S.frame }; }   // stage intro, id 0x43
   KGal.step(GAL, { x: S.pos[0], z: KGal.PLAYER_Z, diam: S.diam });
   for (const e of GAL.events.splice(0)) {
     if (e.t === 'dive') KSnd.se('galaga_19'); else if (e.t === 'shot') KSnd.se('galaga_04'); else if (e.t === 'hit') KSnd.se('galaga_23'); else if (e.t === 'beam') KSnd.se('galaga_05'); else if (e.t === 'beamBack') KSnd.se('galaga_09'); else if (e.t === 'rescue') KSnd.se('galaga_17');   // ids 0x3d, 0x41, 0x49   // ids 0x4b, 0x3c, 0x4f
-    else if (e.t === 'stage' && e.stage === 2) { KSnd.se('galaga_13'); EX.banner = { n: 2, f: S.frame }; } else if (e.t === 'stage' && e.stage === 3) { KSnd.se('galaga_20'); EX.banner = { n: 3, f: S.frame }; }   // ids 0x45, 0x4c
+    else if (e.t === 'stage' && (e.stage === 2 || e.stage === 3)) { const n = e.stage; kingTalk(6 + n - 1, () => { KSnd.se(n === 2 ? 'galaga_13' : 'galaga_20'); EX.banner = { n, f: S.frame }; }); }   // ids 0x45, 0x4c
     else if (e.t === 'clear' && !EX.done) { EX.done = true; S.won = true; KSnd.stopBgm(); KSnd.se('KD_SE_game_20'); }
   }
 }

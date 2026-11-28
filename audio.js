@@ -55,6 +55,9 @@
   if (root.document && root.addEventListener) root.addEventListener('load', () => { promptTimer = setTimeout(showPrompt, 1500); });
   function setMuted(m) { muted = !!m; try { localStorage.setItem('kmute', muted ? '1' : '0'); } catch (e) { } if (master) master.gain.value = muted ? 0 : 1; }
   for (const ev of ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click', 'mousedown']) root.addEventListener(ev, start, { passive: true });
+  // leaving the page (a stage starts with location.href): stop the music and suspend the context at once, so the menu music cannot go on under the stage on iOS Safari, which keeps the old page alive for a moment or in its back-forward cache (tester 2026-11-27, A168). Coming back restarts what was wanted
+  root.addEventListener('pagehide', () => { for (const n of bgmNodes) { try { n.stop(); } catch (e) { } } bgmNodes = []; try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) { } started = false; });
+  root.addEventListener('pageshow', e => { if (e.persisted) start(); });
   if (root.document) root.document.addEventListener('visibilitychange', () => { if (!root.document.hidden && ctx && ctx.state !== 'running') { started = false; start(); } });
   root.KSnd = { bgm, stopBgm, se, start, setMuted, isMuted: () => muted, preload: names => { if (ensure()) names.forEach(load); } };
 })(typeof window !== 'undefined' ? window : globalThis);

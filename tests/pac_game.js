@@ -15,7 +15,7 @@ module.exports = async ({ g, step, K }) => {
   assert.strictEqual(ex().EX.score, 110);
   // 4. frightened ghosts can be picked: 200, 400, 800 ... in the order they are taken (several can be in reach at once in the house); each comes back as eyes
   { const before = ex().EX.score, m = O[4]; assert.strictEqual(m.state, 'map'); put(m.pos[0], m.pos[2]); step(3);
-    const n = P.ghosts.filter(q => q.st === 2).length; assert(n >= 1, 'a ghost was eaten'); assert.strictEqual(ex().EX.score - before, 200 * (2 ** n - 1), 'bonus chain for ' + n);
+    const dl = ex().EX.score - before, n = Math.round(Math.log2(dl / 200 + 1)); assert(n >= 1 && dl === 200 * (2 ** n - 1), 'a chain of 200, 400, 800 ... was paid, got ' + dl);   // a ghost eaten in the house can already be home again, so n comes from the score
     for (let i = 0; i < 4; i++) if (P.ghosts[i].st === 2) { assert.strictEqual(O[12 + i].state, 'map'); assert.strictEqual(O[4 + i].state, 'xhid'); } }
   put(-134, 100); S.pos[1] = 7;   // out of the way of the ghosts coming home
   // 5. the timer runs out: ghosts normal again, bonus back to 200

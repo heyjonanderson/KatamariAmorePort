@@ -46,11 +46,11 @@ for (const e of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) doc
 let lastTE = 0; document.addEventListener('touchend', ev => { const n = Date.now(); if (n - lastTE < 350 && !(ev.target.closest && ev.target.closest('#pause, #res'))) ev.preventDefault(); lastTE = n; }, { passive: false });
 </script>
 <script src="load.js?v=48"></script>
-<script src="audio.js?v=48"></script>
+<script src="audio.js?v=49"></script>
 <script src="text.js?v=48"></script>
 <script src="sim.js?v=52"></script>
 <script src="pacman.js?v=51"></script>
 <script src="galaga.js?v=51"></script>
-<script src="game.js?v=54"></script>
+<script src="game.js?v=57"></script>
 </body>
 </html>
